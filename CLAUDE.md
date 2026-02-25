@@ -296,6 +296,16 @@ config/
 - **Exchange fee**: Applied to both buy and sell sides when calculating profit.
 - **Profit ratio**: `(sell_revenue - buy_cost) / buy_cost`
 
+### Trading Pairs per Exchange
+
+| Exchange | PEP book   | Quote currency | Notes                                      |
+|----------|------------|----------------|--------------------------------------------|
+| MEXC     | `pep_usdt` | USDT (crypto)  |                                            |
+| CoinEx   | `pep_usdt` | USDT (crypto)  |                                            |
+| Kraken   | `pep_usd`  | USD (fiat)     | Also requires `usdt_usd` for conversions   |
+
+When comparing opportunities between Kraken and MEXC/CoinEx, the `usdt_usd` rate from Kraken must be used to normalize prices to a common quote currency before calculating profit.
+
 ### Exchange Integration Pattern
 
 All exchanges implement `ExchangeInterface`. `BaseExchange` provides shared logic (HTTP client, HMAC signing, retry with backoff). Each concrete class (`Mexc`, `CoinEx`, `Kraken`) implements exchange-specific auth and response normalization.

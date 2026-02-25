@@ -324,13 +324,23 @@ ValueObjects/
 
 ---
 
+## Trading Pairs per Exchange
+
+| Exchange | PEP book   | Quote currency | Notes                                      |
+|----------|------------|----------------|--------------------------------------------|
+| MEXC     | `pep_usdt` | USDT (crypto)  |                                            |
+| CoinEx   | `pep_usdt` | USDT (crypto)  |                                            |
+| Kraken   | `pep_usd`  | USD (fiat)     | Also requires `usdt_usd` for conversions   |
+
+When computing arbitrage between Kraken and MEXC/CoinEx, use the `usdt_usd` rate from Kraken to normalize all prices to a common quote before calculating profit. This rate is also needed when moving funds: converting USDT (crypto) to USD (fiat) to deposit into Kraken, or withdrawing USD from Kraken and converting to USDT.
+
 ## Key Domain Rules
 
 - **Profit**: `profit = sell_revenue - buy_cost`
   - `buy_cost = Σ(price × amount × (1 + fee))`
   - `sell_revenue = Σ(price × amount × (1 - fee))`
 - **Minimum threshold**: configurable, default `0.3%` profit ratio
-- **Book format**: lowercase `currency_quote` (e.g. `pep_usdt`)
+- **Book format**: lowercase `currency_quote` (e.g. `pep_usdt`, `pep_usd`, `usdt_usd`)
 - **Exchange name**: TitleCase string — `'Mexc'`, `'CoinEx'`, `'Kraken'`
 - **Profit levels**: Low (<1%), Medium (1-3%), High (3-5%), Very High (5-10%), Extreme (>10%)
 
