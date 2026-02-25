@@ -1,0 +1,110 @@
+<?php
+
+namespace App\Exchanges;
+
+class CoinEx extends BaseExchange
+{
+    /** @var array<string, string> */
+    private const SYMBOL_MAP = [
+        'pep_usdt' => 'PEPUSDT',
+    ];
+
+    public function getName(): string
+    {
+        return 'CoinEx';
+    }
+
+    public function getTxFee(): float
+    {
+        return 0.002;
+    }
+
+    /**
+     * @return array{bids: array<int, array{price: float, amount: float}>, asks: array<int, array{price: float, amount: float}>}
+     */
+    public function getOrderBook(string $symbol): array
+    {
+        $market = self::SYMBOL_MAP[$symbol] ?? strtoupper(str_replace('_', '', $symbol));
+        $url = config('exchanges.coinex.base_url').'/v2/spot/depth';
+
+        $response = $this->request('GET', $url, [
+            'market' => $market,
+            'limit' => 20,
+            'interval' => '0',
+        ]);
+
+        $depth = $response['data']['depth'] ?? [];
+
+        return [
+            'bids' => $this->normalizeEntries($depth['bids'] ?? []),
+            'asks' => $this->normalizeEntries($depth['asks'] ?? []),
+        ];
+    }
+
+    protected function fetchBalances(): array
+    {
+        $url = config('exchanges.coinex.base_url').'/v2/assets/spot/balance';
+
+        return $this->request('GET', $url, [], true);
+    }
+
+    /**
+     * @param  array<string, mixed>  $response
+     * @return array<string, array{available: float}>
+     */
+    protected function normalizeBalances(array $response): array
+    {
+        $balances = [];
+
+        foreach ($response['data'] ?? [] as $entry) {
+            $currency = $entry['ccy'];
+            $available = (float) $entry['available'];
+
+            if ($available > 0) {
+                $balances[$currency] = ['available' => $available];
+            }
+        }
+
+        return $balances;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, string>
+     */
+    protected function buildHeaders(string $method, string $url, array $data, bool $signed): array
+    {
+        $headers = [];
+
+        if ($signed) {
+            $timestamp = (string) (int) (microtime(true) * 1000);
+            $body = empty($data) ? '' : json_encode($data, JSON_THROW_ON_ERROR);
+            $parsedPath = parse_url($url, PHP_URL_PATH) ?? '';
+            $toSign = strtoupper($method).$parsedPath.$body.$timestamp;
+            $signature = hash_hmac('sha256', $toSign, $this->apiSecret);
+
+            $headers['X-COINEX-KEY'] = $this->apiKey;
+            $headers['X-COINEX-SIGN'] = $signature;
+            $headers['X-COINEX-TIMESTAMP'] = $timestamp;
+        }
+
+        return $headers;
+    }
+
+    /**
+     * Normalize raw [[price, amount], ...] entries.
+     *
+     * @param  array<int, array{string, string}>  $entries
+     * @return array<int, array{price: float, amount: float}>
+     */
+    private function normalizeEntries(array $entries): array
+    {
+        return array_map(
+            fn (array $entry): array => [
+                'price' => (float) $entry[0],
+                'amount' => (float) $entry[1],
+            ],
+            $entries
+        );
+    }
+}
