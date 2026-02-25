@@ -257,3 +257,72 @@ protected function isAccessible(User $user, ?string $path = null): bool
 - IMPORTANT: Activate `pest-testing` every time you're working with a Pest or testing-related task.
 
 </laravel-boost-guidelines>
+
+# PEP Arbitrage — Project Context
+
+## Purpose
+
+Monitor price differences for **$PEP (Pepecoin)** across crypto exchanges and detect arbitrage opportunities in real time. The primary trading pair is `PEP/USDT`. Exchanges: **MEXC**, **CoinEx**, **Kraken** (more may be added later).
+
+## Principles
+
+SOLID, KISS, DRY — but **prefer simplicity over cleverness**. Do not over-engineer. If a plain function or a simple Eloquent query works, use it.
+
+## Architecture
+
+### Directory Structure
+
+```
+app/
+  Exchanges/
+    Contracts/ExchangeInterface.php   # Contract all exchanges must fulfill
+    BaseExchange.php                  # Shared logic (HTTP, auth, retry)
+    Mexc.php
+    CoinEx.php
+    Kraken.php
+  Arbitrage/
+    DetectOpportunity.php             # Core calculation: compares order books
+  Console/Commands/                   # Artisan commands (monitoring, cleanup)
+  Livewire/                           # UI components
+  Models/                             # Eloquent models
+config/
+  exchanges.php                       # API keys, base URLs, fee rates
+```
+
+### Key Concepts
+
+- **Book**: A trading pair, e.g. `pep_usdt`.
+- **Opportunity**: A detectable moment where buying on exchange A and selling on B yields profit after fees.
+- **Exchange fee**: Applied to both buy and sell sides when calculating profit.
+- **Profit ratio**: `(sell_revenue - buy_cost) / buy_cost`
+
+### Exchange Integration Pattern
+
+All exchanges implement `ExchangeInterface`. `BaseExchange` provides shared logic (HTTP client, HMAC signing, retry with backoff). Each concrete class (`Mexc`, `CoinEx`, `Kraken`) implements exchange-specific auth and response normalization.
+
+Required exchange methods:
+- `getOrderBook(string $symbol): array` — returns normalized bids/asks
+- `getBalances(): array` — returns `['CURRENCY' => ['available' => float]]`
+- `withdraw(string $currency, float $amount, string $toExchange, string $network): array`
+
+### Models
+
+- `ArbitrageOpportunity` — stores detected opportunities (exchange pair, profit, amounts, timestamps)
+
+### Configuration
+
+Exchange credentials and fee rates live in `config/exchanges.php`, loaded from `.env`. Never use `env()` outside config files.
+
+## Coding Conventions
+
+- Trading pair format: `currency_quotecurrency` lowercase (e.g. `pep_usdt`)
+- Exchange names: TitleCase string identifiers (e.g. `'Mexc'`, `'CoinEx'`, `'Kraken'`)
+- Services end with `Service`, commands end with `Command`
+- Use value objects for immutable data (e.g. `OpportunityData`, `Book`)
+
+## What NOT to Do
+
+- Do not hardcode API keys — always use `config('exchanges.mexc.api_key')`
+- Do not add transfer/withdrawal features until arbitrage detection is stable
+- Do not build a settings UI before the core detection loop works
+- Do not add email notifications in the first iteration

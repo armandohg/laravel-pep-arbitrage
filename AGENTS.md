@@ -257,3 +257,116 @@ protected function isAccessible(User $user, ?string $path = null): bool
 - IMPORTANT: Activate `pest-testing` every time you're working with a Pest or testing-related task.
 
 </laravel-boost-guidelines>
+
+# PEP Arbitrage — Agent Guide
+
+Arbitrage monitor for **$PEP (Pepecoin / pepecoin.org)** across **MEXC**, **CoinEx**, and **Kraken**. Primary trading pair: `PEP/USDT`. Built with Laravel 12, Livewire 4, Flux UI, Pest 4.
+
+---
+
+## Tech Stack
+
+| Layer        | Technology                              |
+|--------------|-----------------------------------------|
+| Backend      | PHP 8.3 / Laravel 12                    |
+| Frontend     | Livewire 4 + Flux UI (free) + Alpine.js |
+| Database     | SQLite (dev) / configurable             |
+| Testing      | Pest 4                                  |
+| Auth         | Laravel Fortify                         |
+
+---
+
+## Project Goals (in priority order)
+
+1. Fetch live order books from MEXC, CoinEx, Kraken for PEP/USDT
+2. Detect price differences and compute profit after fees
+3. Persist detected opportunities to the database
+4. Display a real-time dashboard via Livewire
+5. (Later) fund transfers between exchanges
+6. (Later) email/push notifications
+
+---
+
+## Architecture
+
+### Exchange Layer (`app/Exchanges/`)
+
+```
+Contracts/ExchangeInterface    # Contract: getOrderBook(), getBalances(), withdraw()
+BaseExchange                   # HTTP client, HMAC auth, exponential-backoff retry
+  └─ Mexc                      # MEXC-specific auth & response mapping
+  └─ CoinEx                    # CoinEx-specific auth & response mapping
+  └─ Kraken                    # Kraken-specific auth & response mapping
+```
+
+### Arbitrage Layer (`app/Arbitrage/`)
+
+```
+DetectOpportunity              # Compares order books, calculates profit after fees
+ValueObjects/
+  Book.php                     # Immutable trading pair (e.g. "pep_usdt")
+  OpportunityData.php          # Immutable detected opportunity result
+```
+
+### Models (`app/Models/`)
+
+- `ArbitrageOpportunity` — persisted detected opportunities
+
+### Console Commands (`app/Console/Commands/`)
+
+- `FindArbitrageCommand` — main loop: polls exchanges, detects and saves opportunities
+- `CleanupOpportunitiesCommand` — removes stale records
+
+### Livewire Components (`app/Livewire/`)
+
+- `Dashboard` — live stats overview
+- `OpportunitiesTable` — paginated list with filters
+
+---
+
+## Key Domain Rules
+
+- **Profit**: `profit = sell_revenue - buy_cost`
+  - `buy_cost = Σ(price × amount × (1 + fee))`
+  - `sell_revenue = Σ(price × amount × (1 - fee))`
+- **Minimum threshold**: configurable, default `0.3%` profit ratio
+- **Book format**: lowercase `currency_quote` (e.g. `pep_usdt`)
+- **Exchange name**: TitleCase string — `'Mexc'`, `'CoinEx'`, `'Kraken'`
+- **Profit levels**: Low (<1%), Medium (1-3%), High (3-5%), Very High (5-10%), Extreme (>10%)
+
+---
+
+## Configuration (`config/exchanges.php`)
+
+Per-exchange API keys (from `.env`), base URLs, and fee rates. Never call `env()` outside config.
+
+Required `.env` keys:
+```
+MEXC_API_KEY=
+MEXC_API_SECRET=
+COINEX_API_KEY=
+COINEX_API_SECRET=
+KRAKEN_API_KEY=
+KRAKEN_API_SECRET=
+```
+
+---
+
+## What to Avoid
+
+- `env()` calls outside `config/` files
+- Over-abstracting before the feature works end-to-end
+- Transfer/withdrawal logic before detection is solid
+- Inline validation in controllers — always use Form Requests
+- N+1 queries — eager-load relationships
+
+---
+
+## Running the Project
+
+```bash
+composer run dev                  # Laravel + Vite + queue worker
+php artisan find-arbitrage        # run the detection loop manually
+php artisan test --compact        # run all tests
+vendor/bin/pint --dirty           # format changed PHP files
+```
