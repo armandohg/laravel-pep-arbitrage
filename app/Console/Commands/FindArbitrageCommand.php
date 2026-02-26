@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Arbitrage\DetectOpportunity;
+use App\Arbitrage\ValueObjects\OpportunityData;
 use App\Exchanges\CoinEx;
 use App\Exchanges\Contracts\ExchangeInterface;
 use App\Exchanges\Kraken;
@@ -102,16 +103,7 @@ class FindArbitrageCommand extends Command
                 if ($opportunity !== null) {
                     ArbitrageOpportunity::fromOpportunityData($opportunity);
                     $found++;
-
-                    $this->line(sprintf(
-                        '[%s] OPPORTUNITY %s → %s | profit: %.4f%% (%s) | amount: %.0f PEP',
-                        now()->format('H:i:s'),
-                        $opportunity->buyExchange,
-                        $opportunity->sellExchange,
-                        $opportunity->profitRatio * 100,
-                        $opportunity->profitLevel,
-                        $opportunity->amount,
-                    ));
+                    $this->outputOpportunity($opportunity);
                 }
             }
 
@@ -126,6 +118,51 @@ class FindArbitrageCommand extends Command
             $this->error(sprintf('[%s] Poll error: %s', now()->format('H:i:s'), $e->getMessage()));
             Log::warning('arbitrage:find poll error', ['message' => $e->getMessage()]);
         }
+    }
+
+    private function outputOpportunity(OpportunityData $opportunity): void
+    {
+        $levelColor = match ($opportunity->profitLevel) {
+            'Extreme' => 'red',
+            'VeryHigh' => 'yellow',
+            'High' => 'green',
+            'Medium' => 'cyan',
+            default => 'white',
+        };
+
+        $this->line(sprintf(
+            '[%s] <fg=white;options=bold>OPPORTUNITY</> <fg=cyan>%s → %s</> [<fg=%s>%s</>]',
+            now()->format('H:i:s'),
+            $opportunity->buyExchange,
+            $opportunity->sellExchange,
+            $levelColor,
+            $opportunity->profitLevel,
+        ));
+
+        $this->line(sprintf(
+            '           ├ Amount  : %s PEP',
+            number_format($opportunity->amount, 0),
+        ));
+
+        $this->line(sprintf(
+            '           ├ <options=bold>BUY</>  on %-7s : avg %.8f USDT/PEP  |  cost    %s USDT',
+            $opportunity->buyExchange,
+            $opportunity->avgBuyPrice,
+            number_format($opportunity->totalBuyCost, 4),
+        ));
+
+        $this->line(sprintf(
+            '           ├ <options=bold>SELL</> on %-7s : avg %.8f USDT/PEP  |  revenue %s USDT',
+            $opportunity->sellExchange,
+            $opportunity->avgSellPrice,
+            number_format($opportunity->totalSellRevenue, 4),
+        ));
+
+        $this->line(sprintf(
+            '           └ <fg=green>Profit      : +%s USDT  (+%.4f%%)</>',
+            number_format($opportunity->profit, 4),
+            $opportunity->profitRatio * 100,
+        ));
     }
 
     /**

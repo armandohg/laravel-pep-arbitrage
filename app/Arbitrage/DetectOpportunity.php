@@ -74,6 +74,8 @@ class DetectOpportunity
         }
 
         $totalAmount = 0.0;
+        $totalRawBuy = 0.0;
+        $totalRawSell = 0.0;
         $totalBuyCost = 0.0;
         $totalSellRevenue = 0.0;
 
@@ -106,6 +108,8 @@ class DetectOpportunity
             }
 
             $totalAmount += $filled;
+            $totalRawBuy += $askPrice * $filled;
+            $totalRawSell += $bidPrice * $filled;
             $totalBuyCost += $askPrice * $filled * (1 + $buyFee);
             $totalSellRevenue += $bidPrice * $filled * (1 - $sellFee);
 
@@ -142,6 +146,8 @@ class DetectOpportunity
             buyExchange: $buyExchange->getName(),
             sellExchange: $sellExchange->getName(),
             amount: $totalAmount,
+            avgBuyPrice: $totalRawBuy / $totalAmount,
+            avgSellPrice: $totalRawSell / $totalAmount,
             totalBuyCost: $totalBuyCost,
             totalSellRevenue: $totalSellRevenue,
             profit: $profit,

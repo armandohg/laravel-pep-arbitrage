@@ -8,6 +8,8 @@ readonly class OpportunityData
         public string $buyExchange,
         public string $sellExchange,
         public float $amount,
+        public float $avgBuyPrice,
+        public float $avgSellPrice,
         public float $totalBuyCost,
         public float $totalSellRevenue,
         public float $profit,

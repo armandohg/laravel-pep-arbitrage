@@ -12,8 +12,11 @@ Exchange APIs (MEXC · CoinEx · Kraken)
          ▼
   arbitrage:find           ← Artisan command (polling loop)
          │
-         ├── getOrderBook()  ← fetches normalized bids/asks
-         ├── DetectOpportunity  ← walks order books, calculates profit net of fees
+         ├── getOrderBook()   ← fetches normalized bids/asks
+         ├── getBalances()    ← fetches available USDT / PEP per exchange
+         │                       (skipped in --pretend mode)
+         ├── balanceCap()     ← min(quote_balance / ask_price, pep_balance_on_sell)
+         ├── DetectOpportunity  ← walks order books up to balanceCap, net of fees
          │        └── normalizeToUsdt()  ← converts Kraken USD prices to USDT
          └── ArbitrageOpportunity::fromOpportunityData()  ← persists to DB
                   │
@@ -62,6 +65,22 @@ Profit is calculated **net of fees on both sides**:
 ```
 profit_ratio = (sell_revenue - buy_cost) / buy_cost
 ```
+
+### Balance-aware detection
+
+By default the command fetches your available balances before each poll and caps the detectable volume to what you can actually execute:
+
+```
+buy_cap  = quote_balance_on_buy_exchange / top_ask_price
+sell_cap = PEP_balance_on_sell_exchange
+max_amount = min(buy_cap, sell_cap)
+```
+
+The order-book walk stops as soon as `max_amount` of PEP has been filled, so the persisted `amount`, `profit`, and `total_buy_cost` reflect a **real, executable trade** given your current balances — not a theoretical maximum.
+
+If either cap is zero (no funds available on one side), no opportunity is persisted for that direction.
+
+> **API keys required** — balance fetching calls private authenticated endpoints on each exchange. Make sure your keys are set in `.env` before running in balance-aware mode.
 
 ---
 
@@ -114,7 +133,7 @@ KRAKEN_API_KEY=your_kraken_api_key
 KRAKEN_API_SECRET=your_kraken_api_secret
 ```
 
-> **Note:** The monitoring command only reads public order book endpoints — API keys are only required for balance queries (not yet implemented in the UI).
+> **Balance-aware mode** calls private authenticated endpoints to fetch balances. Run with `--pretend` if you only want to monitor spreads without configured API keys.
 
 ---
 
@@ -133,27 +152,58 @@ php artisan arbitrage:find
 | `--interval=N` | `5` | Seconds to sleep between polls |
 | `--min-profit=N` | `0.003` | Minimum profit ratio to persist (e.g. `0.003` = 0.3 %) |
 | `--once` | — | Run a single poll and exit (useful for testing / cron) |
+| `--pretend` | — | Ignore balances — detects the maximum theoretical opportunity |
+
+### Normal mode vs pretend mode
+
+| | Normal | `--pretend` |
+|-|--------|-------------|
+| Calls `getBalances()` | ✅ yes | ❌ no |
+| Volume capped by funds | ✅ yes | ❌ no |
+| Results are executable | ✅ yes | simulation only |
+| API keys needed | ✅ yes | ❌ no |
+
+Use `--pretend` to explore opportunities without configured API keys, or to see the theoretical maximum that the order books support regardless of your current funds.
 
 ### Examples
 
 ```bash
+# Default: balance-aware, polls every 5 seconds
+php artisan arbitrage:find
+
 # Poll every 10 seconds, only record opportunities above 1 %
 php artisan arbitrage:find --interval=10 --min-profit=0.01
 
 # Single poll (cron-friendly)
 php artisan arbitrage:find --once
 
-# Aggressive polling with low threshold
-php artisan arbitrage:find --interval=2 --min-profit=0.001
+# Simulation — ignore balances, show maximum theoretical opportunity
+php artisan arbitrage:find --pretend
+
+# Combine: single simulation poll with low threshold
+php artisan arbitrage:find --pretend --once --min-profit=0.001
 ```
 
 ### Output
 
 ```
+# Normal mode
 PEP arbitrage monitor | interval: 5s | min-profit: 0.30%
 [14:32:01] No opportunities above 0.30%
-[14:32:06] OPPORTUNITY Mexc → CoinEx | profit: 1.4521% (Medium) | amount: 2500000 PEP
+[14:32:06] OPPORTUNITY Mexc → CoinEx [Medium]
+           ├ PEP amount : 12,400 PEP
+           ├ Cost       : 12.4000 USDT  (required on Mexc)
+           ├ Revenue    : 12.5804 USDT  (received from CoinEx)
+           └ Profit     : +0.1804 USDT  (+1.4521%)
 [14:32:11] No opportunities above 0.30%
+
+# Pretend mode (same spread, no balance cap)
+PEP arbitrage monitor | interval: 5s | min-profit: 0.30% | pretend mode (balances ignored)
+[14:32:01] OPPORTUNITY Mexc → CoinEx [Medium]
+           ├ PEP amount : 2,500,000 PEP
+           ├ Cost       : 2,500.0000 USDT  (required on Mexc)
+           ├ Revenue    : 2,536.3025 USDT  (received from CoinEx)
+           └ Profit     : +36.3025 USDT  (+1.4521%)
 ```
 
 Press `Ctrl+C` to stop gracefully (SIGINT / SIGTERM handled).

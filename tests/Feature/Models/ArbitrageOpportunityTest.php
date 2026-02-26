@@ -8,6 +8,8 @@ it('persists a record from OpportunityData with correct column values', function
         buyExchange: 'Mexc',
         sellExchange: 'CoinEx',
         amount: 1000000.0,
+        avgBuyPrice: 0.0001,
+        avgSellPrice: 0.000102,
         totalBuyCost: 100.0,
         totalSellRevenue: 102.0,
         profit: 2.0,
