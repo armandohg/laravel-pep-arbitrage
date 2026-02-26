@@ -2,6 +2,9 @@
 
 namespace App\Providers;
 
+use App\Exchanges\CoinEx;
+use App\Exchanges\Kraken;
+use App\Exchanges\Mexc;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -15,7 +18,20 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->singleton(Mexc::class, fn () => new Mexc(
+            config('exchanges.mexc.api_key') ?? '',
+            config('exchanges.mexc.api_secret') ?? '',
+        ));
+
+        $this->app->singleton(CoinEx::class, fn () => new CoinEx(
+            config('exchanges.coinex.api_key') ?? '',
+            config('exchanges.coinex.api_secret') ?? '',
+        ));
+
+        $this->app->singleton(Kraken::class, fn () => new Kraken(
+            config('exchanges.kraken.api_key') ?? '',
+            config('exchanges.kraken.api_secret') ?? '',
+        ));
     }
 
     /**
