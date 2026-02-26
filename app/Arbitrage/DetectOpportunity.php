@@ -11,14 +11,18 @@ class DetectOpportunity
 
     /**
      * Check both directions (A→B and B→A) and return the best opportunity, or null.
+     * Pass maxAmountAtoB / maxAmountBtoA to cap each direction by available balance.
+     * Null means no cap (pretend / simulation mode).
      */
     public function between(
         ExchangeInterface $exchangeA, array $bookA,
         ExchangeInterface $exchangeB, array $bookB,
         float $minProfitRatio = self::MIN_PROFIT_RATIO,
+        ?float $maxAmountAtoB = null,
+        ?float $maxAmountBtoA = null,
     ): ?OpportunityData {
-        $aToB = $this->detect($exchangeA, $bookA, $exchangeB, $bookB, $minProfitRatio);
-        $bToA = $this->detect($exchangeB, $bookB, $exchangeA, $bookA, $minProfitRatio);
+        $aToB = $this->detect($exchangeA, $bookA, $exchangeB, $bookB, $minProfitRatio, $maxAmountAtoB);
+        $bToA = $this->detect($exchangeB, $bookB, $exchangeA, $bookA, $minProfitRatio, $maxAmountBtoA);
 
         if ($aToB === null && $bToA === null) {
             return null;
@@ -37,6 +41,7 @@ class DetectOpportunity
 
     /**
      * One direction: buy on $buyExchange (walks asks ascending), sell on $sellExchange (walks bids descending).
+     * $maxAmount caps the total PEP filled to the available balance. Null = no cap (pretend mode).
      *
      * @param  array{bids: array<int, array{price: float, amount: float}>, asks: array<int, array{price: float, amount: float}>}  $buyBook
      * @param  array{bids: array<int, array{price: float, amount: float}>, asks: array<int, array{price: float, amount: float}>}  $sellBook
@@ -45,6 +50,7 @@ class DetectOpportunity
         ExchangeInterface $buyExchange, array $buyBook,
         ExchangeInterface $sellExchange, array $sellBook,
         float $minProfitRatio = self::MIN_PROFIT_RATIO,
+        ?float $maxAmount = null,
     ): ?OpportunityData {
         $asks = $buyBook['asks'];
         $bids = $sellBook['bids'];
@@ -88,6 +94,16 @@ class DetectOpportunity
             }
 
             $filled = min($askRemaining, $bidRemaining);
+
+            if ($maxAmount !== null) {
+                $remaining = $maxAmount - $totalAmount;
+
+                if ($remaining <= 0) {
+                    break;
+                }
+
+                $filled = min($filled, $remaining);
+            }
 
             $totalAmount += $filled;
             $totalBuyCost += $askPrice * $filled * (1 + $buyFee);

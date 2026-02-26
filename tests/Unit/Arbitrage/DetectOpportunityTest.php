@@ -176,6 +176,34 @@ it('accumulates across multiple depth levels', function () {
     expect($result->totalSellRevenue)->toBeCloseTo($expectedSellRevenue, 6);
 });
 
+it('caps the filled amount to maxAmount', function () {
+    $detector = new DetectOpportunity;
+    $buyExchange = fakeExchange('Mexc', 0.0);
+    $sellExchange = fakeExchange('CoinEx', 0.0);
+
+    // Order book has 1000 available but balance only allows 200
+    $buyBook = book([], [level(1.00, 1000.0)]);
+    $sellBook = book([level(1.10, 1000.0)], []);
+
+    $result = $detector->detect($buyExchange, $buyBook, $sellExchange, $sellBook, 0.0, 200.0);
+
+    expect($result)->not->toBeNull();
+    expect($result->amount)->toBe(200.0);
+    expect($result->totalBuyCost)->toBeCloseTo(200.0, 6);
+    expect($result->totalSellRevenue)->toBeCloseTo(220.0, 6);
+});
+
+it('returns null when maxAmount is zero', function () {
+    $detector = new DetectOpportunity;
+    $buyExchange = fakeExchange('Mexc', 0.0);
+    $sellExchange = fakeExchange('CoinEx', 0.0);
+
+    $buyBook = book([], [level(1.00, 1000.0)]);
+    $sellBook = book([level(1.10, 1000.0)], []);
+
+    expect($detector->detect($buyExchange, $buyBook, $sellExchange, $sellBook, 0.0, 0.0))->toBeNull();
+});
+
 it('stops accumulating when a deeper level becomes unprofitable', function () {
     $detector = new DetectOpportunity;
     $buyExchange = fakeExchange('Mexc', 0.0);
