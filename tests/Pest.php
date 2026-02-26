@@ -17,6 +17,8 @@ pest()->extend(Tests\TestCase::class)
 
 pest()->extend(Tests\TestCase::class)->in('Unit/Exchanges');
 
+pest()->extend(Tests\TestCase::class)->in('Unit/Arbitrage');
+
 /*
 |--------------------------------------------------------------------------
 | Expectations
@@ -30,6 +32,14 @@ pest()->extend(Tests\TestCase::class)->in('Unit/Exchanges');
 
 expect()->extend('toBeOne', function () {
     return $this->toBe(1);
+});
+
+expect()->extend('toBeCloseTo', function (float $expected, int $precision = 8): \Pest\Expectation {
+    $diff = abs($this->value - $expected);
+    $tolerance = 10 ** -$precision;
+    expect($diff)->toBeLessThan($tolerance);
+
+    return $this;
 });
 
 /*
