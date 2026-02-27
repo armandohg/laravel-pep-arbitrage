@@ -22,4 +22,12 @@ interface ExchangeInterface
 
     /** Returns maker/taker fee rate as decimal (e.g. 0.002 = 0.2%) */
     public function getTxFee(): float;
+
+    /**
+     * Withdraw currency to a destination address or key.
+     * For Kraken, $address is a pre-configured withdrawal key name (set in Kraken UI).
+     *
+     * @return array<string, mixed>
+     */
+    public function withdraw(string $currency, float $amount, string $address, string $network): array;
 }

@@ -100,6 +100,50 @@ class Kraken extends BaseExchange
     }
 
     /**
+     * @return array<string, mixed>
+     */
+    public function withdraw(string $currency, float $amount, string $address, string $network): array
+    {
+        $url = config('exchanges.kraken.base_url').'/private/Withdraw';
+
+        return $this->requestPrivate($url, [
+            'asset' => $currency,
+            'key' => $address,
+            'amount' => $amount,
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function buyUsdt(float $usdAmount): array
+    {
+        $url = config('exchanges.kraken.base_url').'/private/AddOrder';
+
+        return $this->requestPrivate($url, [
+            'pair' => 'USDTUSD',
+            'type' => 'buy',
+            'ordertype' => 'market',
+            'volume' => $usdAmount,
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function sellUsdt(float $usdtAmount): array
+    {
+        $url = config('exchanges.kraken.base_url').'/private/AddOrder';
+
+        return $this->requestPrivate($url, [
+            'pair' => 'USDTUSD',
+            'type' => 'sell',
+            'ordertype' => 'market',
+            'volume' => $usdtAmount,
+        ]);
+    }
+
+    /**
      * Perform a signed POST request to a Kraken private endpoint.
      *
      * @param  array<string, mixed>  $postData

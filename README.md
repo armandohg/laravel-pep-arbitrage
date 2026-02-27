@@ -10,14 +10,16 @@ A real-time arbitrage monitor for **$PEP (Pepecoin)** built with Laravel 12, Liv
 Exchange APIs (MEXC · CoinEx · Kraken)
          │
          ▼
-  arbitrage:find           ← Artisan command (polling loop)
+  arbitrage:find                ← Artisan command (polling loop)
          │
-         ├── getOrderBook()   ← fetches normalized bids/asks
-         ├── getBalances()    ← fetches available USDT / PEP per exchange
-         │                       (skipped in --pretend mode)
-         ├── balanceCap()     ← min(quote_balance / ask_price, pep_balance_on_sell)
-         ├── DetectOpportunity  ← walks order books up to balanceCap, net of fees
-         │        └── normalizeToUsdt()  ← converts Kraken USD prices to USDT
+         ├── getOrderBook()        ← fetches normalized bids/asks
+         ├── getBalances()         ← fetches available USDT / PEP per exchange
+         │                            (skipped in --pretend mode)
+         ├── DetectOpportunity
+         │        ├── normalizeToUsdt()       ← converts Kraken USD prices to USDT
+         │        ├── getMaxBuyableAsks()     ← level-by-level buy capacity from quote balance
+         │        ├── getMaxSellableBids()    ← level-by-level sell capacity from PEP balance
+         │        └── buyLevels × sellLevels  ← tries all depth combinations, picks best profit
          └── ArbitrageOpportunity::fromOpportunityData()  ← persists to DB
                   │
                   ▼
@@ -68,17 +70,20 @@ profit_ratio = (sell_revenue - buy_cost) / buy_cost
 
 ### Balance-aware detection
 
-By default the command fetches your available balances before each poll and caps the detectable volume to what you can actually execute:
+By default the command fetches your available balances before each poll and builds level-by-level capacity arrays before searching for the best opportunity:
 
 ```
-buy_cap  = quote_balance_on_buy_exchange / top_ask_price
-sell_cap = PEP_balance_on_sell_exchange
-max_amount = min(buy_cap, sell_cap)
+getMaxBuyableAsks  — for each ask level: how many PEP can be bought
+                     with the remaining quote balance (USDT / USD)
+getMaxSellableBids — for each bid level: how many PEP can be sold
+                     with the remaining PEP balance
 ```
 
-The order-book walk stops as soon as `max_amount` of PEP has been filled, so the persisted `amount`, `profit`, and `total_buy_cost` reflect a **real, executable trade** given your current balances — not a theoretical maximum.
+`DetectOpportunity` then tries every combination of `1..5` depth levels on the buy side against `1..5` depth levels on the sell side (up to 25 combinations per direction) and picks the one that yields the **highest absolute profit** above the minimum threshold.
 
-If either cap is zero (no funds available on one side), no opportunity is persisted for that direction.
+This means the persisted `amount`, `profit`, and `total_buy_cost` reflect a **real, executable trade** across potentially multiple price levels, given your current balances — not a theoretical maximum.
+
+If the available balance on either side is zero, no opportunity is persisted for that direction.
 
 > **API keys required** — balance fetching calls private authenticated endpoints on each exchange. Make sure your keys are set in `.env` before running in balance-aware mode.
 

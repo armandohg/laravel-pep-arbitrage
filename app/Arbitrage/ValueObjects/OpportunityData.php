@@ -4,6 +4,10 @@ namespace App\Arbitrage\ValueObjects;
 
 readonly class OpportunityData
 {
+    /**
+     * @param  array<int, array{price: float, amount: float}>  $buyLevels  Ask levels used (price ascending).
+     * @param  array<int, array{price: float, amount: float}>  $sellLevels  Bid levels used (price descending).
+     */
     public function __construct(
         public string $buyExchange,
         public string $sellExchange,
@@ -15,6 +19,8 @@ readonly class OpportunityData
         public float $profit,
         public float $profitRatio,
         public string $profitLevel,
+        public array $buyLevels = [],
+        public array $sellLevels = [],
     ) {}
 
     public static function profitLevel(float $ratio): string

@@ -36,6 +36,11 @@ function fakeExchange(string $name, float $fee): ExchangeInterface
         {
             return [];
         }
+
+        public function withdraw(string $currency, float $amount, string $address, string $network): array
+        {
+            return [];
+        }
     };
 }
 
@@ -176,16 +181,17 @@ it('accumulates across multiple depth levels', function () {
     expect($result->totalSellRevenue)->toBeCloseTo($expectedSellRevenue, 6);
 });
 
-it('caps the filled amount to maxAmount', function () {
+it('caps the filled amount by quoteBalance (buy side)', function () {
     $detector = new DetectOpportunity;
     $buyExchange = fakeExchange('Mexc', 0.0);
     $sellExchange = fakeExchange('CoinEx', 0.0);
 
-    // Order book has 1000 available but balance only allows 200
+    // Order book has 1000 available but quote balance only allows buying 200 PEP at price 1.00
     $buyBook = book([], [level(1.00, 1000.0)]);
     $sellBook = book([level(1.10, 1000.0)], []);
 
-    $result = $detector->detect($buyExchange, $buyBook, $sellExchange, $sellBook, 0.0, 200.0);
+    // quoteBalance = 200 USDT → max 200 PEP buyable at 1.00; baseBalance = null (no sell cap)
+    $result = $detector->detect($buyExchange, $buyBook, $sellExchange, $sellBook, 0.0, 200.0, null);
 
     expect($result)->not->toBeNull();
     expect($result->amount)->toBe(200.0);
@@ -193,7 +199,7 @@ it('caps the filled amount to maxAmount', function () {
     expect($result->totalSellRevenue)->toBeCloseTo(220.0, 6);
 });
 
-it('returns null when maxAmount is zero', function () {
+it('returns null when quoteBalance is zero', function () {
     $detector = new DetectOpportunity;
     $buyExchange = fakeExchange('Mexc', 0.0);
     $sellExchange = fakeExchange('CoinEx', 0.0);
@@ -201,7 +207,8 @@ it('returns null when maxAmount is zero', function () {
     $buyBook = book([], [level(1.00, 1000.0)]);
     $sellBook = book([level(1.10, 1000.0)], []);
 
-    expect($detector->detect($buyExchange, $buyBook, $sellExchange, $sellBook, 0.0, 0.0))->toBeNull();
+    // quoteBalance = 0 → getMaxBuyableAsks returns [] → no opportunity
+    expect($detector->detect($buyExchange, $buyBook, $sellExchange, $sellBook, 0.0, 0.0, null))->toBeNull();
 });
 
 it('stops accumulating when a deeper level becomes unprofitable', function () {

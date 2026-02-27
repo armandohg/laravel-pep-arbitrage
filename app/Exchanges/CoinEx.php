@@ -92,6 +92,21 @@ class CoinEx extends BaseExchange
     }
 
     /**
+     * @return array<string, mixed>
+     */
+    public function withdraw(string $currency, float $amount, string $address, string $network): array
+    {
+        $url = config('exchanges.coinex.base_url').'/v2/assets/withdraw';
+
+        return $this->request('POST', $url, [
+            'ccy' => $currency,
+            'to_address' => $address,
+            'amount' => $amount,
+            'chain' => $network,
+        ], true);
+    }
+
+    /**
      * Normalize raw [[price, amount], ...] entries.
      *
      * @param  array<int, array{string, string}>  $entries

@@ -108,6 +108,21 @@ class Mexc extends BaseExchange
     }
 
     /**
+     * @return array<string, mixed>
+     */
+    public function withdraw(string $currency, float $amount, string $address, string $network): array
+    {
+        $url = config('exchanges.mexc.base_url').'/api/v3/capital/withdraw/apply';
+
+        return $this->request('POST', $url, [
+            'coin' => $currency,
+            'address' => $address,
+            'amount' => $amount,
+            'netWork' => $network,
+        ], true);
+    }
+
+    /**
      * Normalize raw [[price, amount], ...] entries.
      *
      * @param  array<int, array{string, string}>  $entries

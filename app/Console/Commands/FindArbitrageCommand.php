@@ -5,7 +5,6 @@ namespace App\Console\Commands;
 use App\Arbitrage\DetectOpportunity;
 use App\Arbitrage\ValueObjects\OpportunityData;
 use App\Exchanges\CoinEx;
-use App\Exchanges\Contracts\ExchangeInterface;
 use App\Exchanges\Kraken;
 use App\Exchanges\Mexc;
 use App\Models\ArbitrageOpportunity;
@@ -77,28 +76,43 @@ class FindArbitrageCommand extends Command
             $usdtUsdRate = $this->usdtUsdRate($krakenUsdtBook);
             $krakenNormalized = DetectOpportunity::normalizeToUsdt($krakenPepBookRaw, $usdtUsdRate);
 
-            $balances = $pretend ? [] : $this->fetchBalances();
+            // Quote balances in USDT-equivalent (Kraken USD is converted).
+            // Base balance is PEP on each exchange.
+            if ($pretend) {
+                $quoteBalances = [];
+                $baseBalances = [];
+            } else {
+                $balances = $this->fetchBalances();
+                $quoteBalances = [
+                    'Mexc' => $balances['Mexc']['USDT']['available'] ?? 0.0,
+                    'CoinEx' => $balances['CoinEx']['USDT']['available'] ?? 0.0,
+                    'Kraken' => ($balances['Kraken']['USD']['available'] ?? 0.0) / $usdtUsdRate,
+                ];
+                $baseBalances = [
+                    'Mexc' => $balances['Mexc']['PEP']['available'] ?? 0.0,
+                    'CoinEx' => $balances['CoinEx']['PEP']['available'] ?? 0.0,
+                    'Kraken' => $balances['Kraken']['PEP']['available'] ?? 0.0,
+                ];
+            }
 
-            // Each entry: [exchangeA, bookA, exchangeB, bookB, rawBookA, rawBookB]
-            // rawBook* = prices in the exchange's native quote currency (USD for Kraken, USDT for others)
-            // Used only for balance cap calculation.
             $pairs = [
-                [$this->mexc, $mexcBook, $this->coinex, $coinexBook, $mexcBook, $coinexBook],
-                [$this->mexc, $mexcBook, $this->kraken, $krakenNormalized, $mexcBook, $krakenPepBookRaw],
-                [$this->coinex, $coinexBook, $this->kraken, $krakenNormalized, $coinexBook, $krakenPepBookRaw],
+                [$this->mexc, $mexcBook, $this->coinex, $coinexBook],
+                [$this->mexc, $mexcBook, $this->kraken, $krakenNormalized],
+                [$this->coinex, $coinexBook, $this->kraken, $krakenNormalized],
             ];
 
             $found = 0;
 
-            foreach ($pairs as [$exchangeA, $bookA, $exchangeB, $bookB, $rawBookA, $rawBookB]) {
-                [$maxAtoB, $maxBtoA] = $pretend
-                    ? [null, null]
-                    : [
-                        $this->balanceCap($exchangeA, $rawBookA, $balances[$exchangeA->getName()] ?? [], $exchangeB, $balances[$exchangeB->getName()] ?? []),
-                        $this->balanceCap($exchangeB, $rawBookB, $balances[$exchangeB->getName()] ?? [], $exchangeA, $balances[$exchangeA->getName()] ?? []),
-                    ];
-
-                $opportunity = $this->detector->between($exchangeA, $bookA, $exchangeB, $bookB, $minProfit, $maxAtoB, $maxBtoA);
+            foreach ($pairs as [$exchangeA, $bookA, $exchangeB, $bookB]) {
+                $opportunity = $this->detector->between(
+                    $exchangeA, $bookA,
+                    $exchangeB, $bookB,
+                    $minProfit,
+                    $pretend ? null : $quoteBalances[$exchangeA->getName()],
+                    $pretend ? null : $baseBalances[$exchangeA->getName()],
+                    $pretend ? null : $quoteBalances[$exchangeB->getName()],
+                    $pretend ? null : $baseBalances[$exchangeB->getName()],
+                );
 
                 if ($opportunity !== null) {
                     ArbitrageOpportunity::fromOpportunityData($opportunity);
@@ -144,6 +158,9 @@ class FindArbitrageCommand extends Command
             number_format($opportunity->amount, 0),
         ));
 
+        $multiLevel = count($opportunity->buyLevels) > 1 || count($opportunity->sellLevels) > 1;
+
+        // BUY side
         $this->line(sprintf(
             '           ├ <options=bold>BUY</>  on %-7s : avg %.8f USDT/PEP  |  cost    %s USDT',
             $opportunity->buyExchange,
@@ -151,6 +168,20 @@ class FindArbitrageCommand extends Command
             number_format($opportunity->totalBuyCost, 4),
         ));
 
+        if ($multiLevel) {
+            foreach ($opportunity->buyLevels as $i => $level) {
+                $prefix = $i === array_key_last($opportunity->buyLevels) ? '│              └' : '│              ├';
+                $this->line(sprintf(
+                    '           %s level %d : %.8f USDT/PEP × %s PEP',
+                    $prefix,
+                    $i + 1,
+                    $level['price'],
+                    number_format($level['amount'], 0),
+                ));
+            }
+        }
+
+        // SELL side
         $this->line(sprintf(
             '           ├ <options=bold>SELL</> on %-7s : avg %.8f USDT/PEP  |  revenue %s USDT',
             $opportunity->sellExchange,
@@ -158,42 +189,24 @@ class FindArbitrageCommand extends Command
             number_format($opportunity->totalSellRevenue, 4),
         ));
 
+        if ($multiLevel) {
+            foreach ($opportunity->sellLevels as $i => $level) {
+                $prefix = $i === array_key_last($opportunity->sellLevels) ? '│              └' : '│              ├';
+                $this->line(sprintf(
+                    '           %s level %d : %.8f USDT/PEP × %s PEP',
+                    $prefix,
+                    $i + 1,
+                    $level['price'],
+                    number_format($level['amount'], 0),
+                ));
+            }
+        }
+
         $this->line(sprintf(
             '           └ <fg=green>Profit      : +%s USDT  (+%.4f%%)</>',
             number_format($opportunity->profit, 4),
             $opportunity->profitRatio * 100,
         ));
-    }
-
-    /**
-     * Calculate the maximum PEP amount tradeable given available balances.
-     *
-     * Buy cap  = quote_balance_on_buy_exchange / top_ask_price (native currency)
-     * Sell cap = PEP_balance_on_sell_exchange
-     *
-     * @param  array<string, array{available: float}>  $buyBalances
-     * @param  array<string, array{available: float}>  $sellBalances
-     * @param  array{bids: array<int, array{price: float, amount: float}>, asks: array<int, array{price: float, amount: float}>}  $rawBuyBook
-     */
-    private function balanceCap(
-        ExchangeInterface $buyExchange,
-        array $rawBuyBook,
-        array $buyBalances,
-        ExchangeInterface $sellExchange,
-        array $sellBalances,
-    ): float {
-        $quoteCurrency = $buyExchange->getName() === 'Kraken' ? 'USD' : 'USDT';
-        $quoteAvailable = $buyBalances[$quoteCurrency]['available'] ?? 0.0;
-        $topAskPrice = $rawBuyBook['asks'][0]['price'] ?? 0.0;
-
-        if ($topAskPrice <= 0 || $quoteAvailable <= 0) {
-            return 0.0;
-        }
-
-        $buyCap = $quoteAvailable / $topAskPrice;
-        $pepAvailable = $sellBalances['PEP']['available'] ?? 0.0;
-
-        return min($buyCap, $pepAvailable);
     }
 
     /**
