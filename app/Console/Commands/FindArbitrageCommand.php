@@ -16,9 +16,12 @@ use Throwable;
 class FindArbitrageCommand extends Command
 {
     protected $signature = 'arbitrage:find
-        {--interval=5 : Seconds between polls}
+        {--interval=5 : Seconds between discovery polls}
         {--min-profit=0.003 : Minimum profit ratio to record (e.g. 0.003 = 0.3%)}
-        {--once : Run a single poll and exit}
+        {--sustain=10 : Seconds the winning pair must hold before executing}
+        {--sustain-interval=2 : Seconds between checks during the sustain phase}
+        {--stability=0.5 : Profit % drift tolerance during sustain (e.g. 0.5 = ±0.5%)}
+        {--once : Run a single discovery poll and exit}
         {--pretend : Ignore balances and detect the maximum theoretical opportunity (simulation only)}';
 
     protected $description = 'Monitor PEP order books across exchanges and detect arbitrage opportunities';
@@ -36,14 +39,20 @@ class FindArbitrageCommand extends Command
     {
         $interval = (int) $this->option('interval');
         $minProfit = (float) $this->option('min-profit');
+        $sustainDuration = (int) $this->option('sustain');
+        $sustainInterval = (int) $this->option('sustain-interval');
+        $stability = (float) $this->option('stability');
         $once = (bool) $this->option('once');
         $pretend = (bool) $this->option('pretend');
 
         $this->info(sprintf(
-            'PEP arbitrage monitor | interval: %ds | min-profit: %.2f%%%s',
+            'PEP arbitrage monitor | discovery: %ds | sustain: %ds (check every %ds, tolerance ±%.1f%%) | min-profit: %.2f%%%s',
             $interval,
+            $sustainDuration,
+            $sustainInterval,
+            $stability,
             $minProfit * 100,
-            $pretend ? ' | pretend mode (balances ignored)' : '',
+            $pretend ? ' | pretend mode' : '',
         ));
 
         $shouldStop = false;
@@ -55,7 +64,17 @@ class FindArbitrageCommand extends Command
         });
 
         do {
-            $this->poll($minProfit, $pretend);
+            // Phase 1 — Discovery: poll all pairs and find the best opportunity.
+            $best = $this->discoverBestOpportunity($minProfit, $pretend);
+
+            if ($best !== null) {
+                // Phase 2 — Sustain: monitor only the winning pair until confirmed or lost.
+                $confirmed = $this->monitorUntilConfirmed($best, $minProfit, $sustainDuration, $sustainInterval, $stability, $pretend, $shouldStop);
+
+                if ($confirmed) {
+                    $this->executeBestOpportunity($best, $pretend);
+                }
+            }
 
             if (! $once && ! $shouldStop) {
                 sleep($interval);
@@ -65,43 +84,25 @@ class FindArbitrageCommand extends Command
         return self::SUCCESS;
     }
 
-    protected function poll(float $minProfit, bool $pretend): void
+    /**
+     * Phase 1 — Poll all exchange pairs and return the best opportunity found, or null.
+     */
+    protected function discoverBestOpportunity(float $minProfit, bool $pretend): ?OpportunityData
     {
+        $this->line(sprintf('[%s] <fg=cyan>[DISCOVERY]</> Polling all exchange pairs...', now()->format('H:i:s')));
+
         try {
-            $mexcBook = $this->mexc->getOrderBook('pep_usdt');
-            $coinexBook = $this->coinex->getOrderBook('pep_usdt');
-            $krakenPepBookRaw = $this->kraken->getOrderBook('pep_usd');
-            $krakenUsdtBook = $this->kraken->getOrderBook('usdt_usd');
-
-            $usdtUsdRate = $this->usdtUsdRate($krakenUsdtBook);
-            $krakenNormalized = DetectOpportunity::normalizeToUsdt($krakenPepBookRaw, $usdtUsdRate);
-
-            // Quote balances in USDT-equivalent (Kraken USD is converted).
-            // Base balance is PEP on each exchange.
-            if ($pretend) {
-                $quoteBalances = [];
-                $baseBalances = [];
-            } else {
-                $balances = $this->fetchBalances();
-                $quoteBalances = [
-                    'Mexc' => $balances['Mexc']['USDT']['available'] ?? 0.0,
-                    'CoinEx' => $balances['CoinEx']['USDT']['available'] ?? 0.0,
-                    'Kraken' => ($balances['Kraken']['USD']['available'] ?? 0.0) / $usdtUsdRate,
-                ];
-                $baseBalances = [
-                    'Mexc' => $balances['Mexc']['PEP']['available'] ?? 0.0,
-                    'CoinEx' => $balances['CoinEx']['PEP']['available'] ?? 0.0,
-                    'Kraken' => $balances['Kraken']['PEP']['available'] ?? 0.0,
-                ];
-            }
+            [$books, $usdtUsdRate] = $this->fetchAllBooks();
+            [$quoteBalances, $baseBalances] = $this->resolveBalances($pretend, $books['usdtUsdRate']);
 
             $pairs = [
-                [$this->mexc, $mexcBook, $this->coinex, $coinexBook],
-                [$this->mexc, $mexcBook, $this->kraken, $krakenNormalized],
-                [$this->coinex, $coinexBook, $this->kraken, $krakenNormalized],
+                [$this->mexc, $books['mexc'], $this->coinex, $books['coinex']],
+                [$this->mexc, $books['mexc'], $this->kraken, $books['krakenNormalized']],
+                [$this->coinex, $books['coinex'], $this->kraken, $books['krakenNormalized']],
             ];
 
-            $found = 0;
+            /** @var OpportunityData|null $best */
+            $best = null;
 
             foreach ($pairs as [$exchangeA, $bookA, $exchangeB, $bookB]) {
                 $opportunity = $this->detector->between(
@@ -116,21 +117,147 @@ class FindArbitrageCommand extends Command
 
                 if ($opportunity !== null) {
                     ArbitrageOpportunity::fromOpportunityData($opportunity);
-                    $found++;
                     $this->outputOpportunity($opportunity);
+
+                    if ($best === null || $opportunity->profitRatio > $best->profitRatio) {
+                        $best = $opportunity;
+                    }
                 }
             }
 
-            if ($found === 0) {
+            if ($best === null) {
+                $this->line(sprintf('[%s] No opportunities above %.2f%%', now()->format('H:i:s'), $minProfit * 100));
+            } else {
                 $this->line(sprintf(
-                    '[%s] No opportunities above %.2f%%',
+                    '[%s] <fg=yellow>Best opportunity: %s → %s @ +%.4f%% — entering sustain phase.</>',
                     now()->format('H:i:s'),
-                    $minProfit * 100,
+                    $best->buyExchange,
+                    $best->sellExchange,
+                    $best->profitRatio * 100,
                 ));
             }
+
+            return $best;
         } catch (Throwable $e) {
-            $this->error(sprintf('[%s] Poll error: %s', now()->format('H:i:s'), $e->getMessage()));
-            Log::warning('arbitrage:find poll error', ['message' => $e->getMessage()]);
+            $this->error(sprintf('[%s] Discovery error: %s', now()->format('H:i:s'), $e->getMessage()));
+            Log::warning('arbitrage:find discovery error', ['message' => $e->getMessage()]);
+
+            return null;
+        }
+    }
+
+    /**
+     * Phase 2 — Monitor only the winning exchange pair.
+     * Returns true if the opportunity is confirmed after the sustain duration, false if it is lost.
+     */
+    protected function monitorUntilConfirmed(
+        OpportunityData $candidate,
+        float $minProfit,
+        int $sustainDuration,
+        int $sustainInterval,
+        float $stability,
+        bool $pretend,
+        bool &$shouldStop,
+    ): bool {
+        $buyExchange = $this->exchangeByName($candidate->buyExchange);
+        $sellExchange = $this->exchangeByName($candidate->sellExchange);
+        $sustainedSince = now()->timestamp;
+        $initialProfitPct = $candidate->profitRatio * 100;
+
+        $this->line(sprintf(
+            '[%s] <fg=cyan>[SUSTAIN]</> Monitoring %s → %s for %ds (check every %ds)...',
+            now()->format('H:i:s'),
+            $candidate->buyExchange,
+            $candidate->sellExchange,
+            $sustainDuration,
+            $sustainInterval,
+        ));
+
+        while (! $shouldStop) {
+            $elapsed = now()->timestamp - $sustainedSince;
+
+            if ($elapsed >= $sustainDuration) {
+                return true;
+            }
+
+            sleep($sustainInterval);
+
+            try {
+                [$books, $usdtUsdRate] = $this->fetchBooksForPair($buyExchange, $sellExchange);
+                [$quoteBalances, $baseBalances] = $this->resolveBalances($pretend, $usdtUsdRate);
+
+                $opportunity = $this->detector->between(
+                    $buyExchange, $books['buy'],
+                    $sellExchange, $books['sell'],
+                    $minProfit,
+                    $pretend ? null : $quoteBalances[$buyExchange->getName()],
+                    $pretend ? null : $baseBalances[$buyExchange->getName()],
+                    $pretend ? null : $quoteBalances[$sellExchange->getName()],
+                    $pretend ? null : $baseBalances[$sellExchange->getName()],
+                );
+
+                if ($opportunity === null) {
+                    $this->line(sprintf(
+                        '[%s] <fg=red>[SUSTAIN]</> Opportunity lost after %ds. Returning to discovery.',
+                        now()->format('H:i:s'),
+                        $elapsed,
+                    ));
+
+                    return false;
+                }
+
+                $currentProfitPct = $opportunity->profitRatio * 100;
+                $minAllowed = $initialProfitPct - $stability;
+                $maxAllowed = $initialProfitPct + $stability;
+
+                if ($currentProfitPct < $minAllowed || $currentProfitPct > $maxAllowed) {
+                    $this->line(sprintf(
+                        '[%s] <fg=red>[SUSTAIN]</> Profit drifted too much (%.4f%% → %.4f%%, tolerance ±%.1f%%). Returning to discovery.',
+                        now()->format('H:i:s'),
+                        $initialProfitPct,
+                        $currentProfitPct,
+                        $stability,
+                    ));
+
+                    return false;
+                }
+
+                $remaining = $sustainDuration - $elapsed;
+                $this->line(sprintf(
+                    '[%s] <fg=cyan>[SUSTAIN]</> Holding — profit: %.4f%% | %ds remaining.',
+                    now()->format('H:i:s'),
+                    $currentProfitPct,
+                    $remaining,
+                ));
+            } catch (Throwable $e) {
+                $this->error(sprintf('[%s] Sustain check error: %s', now()->format('H:i:s'), $e->getMessage()));
+                Log::warning('arbitrage:find sustain error', ['message' => $e->getMessage()]);
+
+                return false;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Execute the confirmed opportunity (placeholder — real order logic goes here).
+     */
+    protected function executeBestOpportunity(OpportunityData $opportunity, bool $pretend): void
+    {
+        $this->info(sprintf(
+            '[%s] >>> EXECUTION CRITERIA MET: %s → %s | profit: +%.4f%% | %s USDT <<<',
+            now()->format('H:i:s'),
+            $opportunity->buyExchange,
+            $opportunity->sellExchange,
+            $opportunity->profitRatio * 100,
+            number_format($opportunity->profit, 4),
+        ));
+
+        if ($pretend) {
+            $this->warn('[pretend] Would execute trade — skipping real orders.');
+        } else {
+            $this->warn('Execution not yet implemented.');
         }
     }
 
@@ -210,23 +337,61 @@ class FindArbitrageCommand extends Command
     }
 
     /**
-     * Fetch balances from all three exchanges, keyed by exchange name.
+     * Fetch order books from all exchanges for the discovery phase.
+     * Returns a books map and the resolved USDT/USD rate.
      *
-     * @return array<string, array<string, array{available: float}>>
+     * @return array{array{mexc: array, coinex: array, krakenNormalized: array, usdtUsdRate: float}, float}
      */
-    private function fetchBalances(): array
+    private function fetchAllBooks(): array
     {
+        $mexcBook = $this->mexc->getOrderBook('pep_usdt');
+        $coinexBook = $this->coinex->getOrderBook('pep_usdt');
+        $krakenPepBookRaw = $this->kraken->getOrderBook('pep_usd');
+        $krakenUsdtBook = $this->kraken->getOrderBook('usdt_usd');
+
+        $usdtUsdRate = $this->extractUsdtUsdRate($krakenUsdtBook);
+        $krakenNormalized = DetectOpportunity::normalizeToUsdt($krakenPepBookRaw, $usdtUsdRate);
+
         return [
-            $this->mexc->getName() => $this->mexc->getBalances(),
-            $this->coinex->getName() => $this->coinex->getBalances(),
-            $this->kraken->getName() => $this->kraken->getBalances(),
+            [
+                'mexc' => $mexcBook,
+                'coinex' => $coinexBook,
+                'krakenNormalized' => $krakenNormalized,
+                'usdtUsdRate' => $usdtUsdRate,
+            ],
+            $usdtUsdRate,
         ];
+    }
+
+    /**
+     * Fetch order books only for the two exchanges in the winning pair (sustain phase).
+     * Returns a books map and the resolved USDT/USD rate.
+     *
+     * @return array{array{buy: array, sell: array}, float}
+     */
+    private function fetchBooksForPair(
+        \App\Exchanges\Contracts\ExchangeInterface $buyExchange,
+        \App\Exchanges\Contracts\ExchangeInterface $sellExchange,
+    ): array {
+        $needsKraken = $buyExchange->getName() === 'Kraken' || $sellExchange->getName() === 'Kraken';
+
+        $usdtUsdRate = 1.0;
+
+        if ($needsKraken) {
+            $krakenUsdtBook = $this->kraken->getOrderBook('usdt_usd');
+            $usdtUsdRate = $this->extractUsdtUsdRate($krakenUsdtBook);
+        }
+
+        $buyBook = $this->fetchNormalizedBook($buyExchange, $usdtUsdRate);
+        $sellBook = $this->fetchNormalizedBook($sellExchange, $usdtUsdRate);
+
+        return [['buy' => $buyBook, 'sell' => $sellBook], $usdtUsdRate];
     }
 
     /**
      * @param  array{bids: array<int, array{price: float, amount: float}>, asks: array<int, array{price: float, amount: float}>}  $usdtUsdBook
      */
-    private function usdtUsdRate(array $usdtUsdBook): float
+    private function extractUsdtUsdRate(array $usdtUsdBook): float
     {
         $bestBid = $usdtUsdBook['bids'][0]['price'] ?? null;
         $bestAsk = $usdtUsdBook['asks'][0]['price'] ?? null;
@@ -236,5 +401,69 @@ class FindArbitrageCommand extends Command
         }
 
         return ($bestBid + $bestAsk) / 2;
+    }
+
+    /**
+     * Fetch and normalize an order book for a given exchange.
+     * Kraken's PEP book is normalized to USDT using the given rate.
+     *
+     * @return array{bids: array, asks: array}
+     */
+    private function fetchNormalizedBook(
+        \App\Exchanges\Contracts\ExchangeInterface $exchange,
+        float $usdtUsdRate,
+    ): array {
+        if ($exchange->getName() === 'Kraken') {
+            $raw = $exchange->getOrderBook('pep_usd');
+
+            return DetectOpportunity::normalizeToUsdt($raw, $usdtUsdRate);
+        }
+
+        return $exchange->getOrderBook('pep_usdt');
+    }
+
+    /**
+     * Resolve quote and base balances for all exchanges, or return empty arrays in pretend mode.
+     *
+     * @return array{array<string, float>, array<string, float>}
+     */
+    private function resolveBalances(bool $pretend, float $usdtUsdRate): array
+    {
+        if ($pretend) {
+            return [[], []];
+        }
+
+        $balances = [
+            $this->mexc->getName() => $this->mexc->getBalances(),
+            $this->coinex->getName() => $this->coinex->getBalances(),
+            $this->kraken->getName() => $this->kraken->getBalances(),
+        ];
+
+        $quoteBalances = [
+            'Mexc' => $balances['Mexc']['USDT']['available'] ?? 0.0,
+            'CoinEx' => $balances['CoinEx']['USDT']['available'] ?? 0.0,
+            'Kraken' => ($balances['Kraken']['USD']['available'] ?? 0.0) / $usdtUsdRate,
+        ];
+
+        $baseBalances = [
+            'Mexc' => $balances['Mexc']['PEP']['available'] ?? 0.0,
+            'CoinEx' => $balances['CoinEx']['PEP']['available'] ?? 0.0,
+            'Kraken' => $balances['Kraken']['PEP']['available'] ?? 0.0,
+        ];
+
+        return [$quoteBalances, $baseBalances];
+    }
+
+    /**
+     * Resolve an exchange instance by its name.
+     */
+    private function exchangeByName(string $name): \App\Exchanges\Contracts\ExchangeInterface
+    {
+        return match ($name) {
+            'Mexc' => $this->mexc,
+            'CoinEx' => $this->coinex,
+            'Kraken' => $this->kraken,
+            default => throw new RuntimeException("Unknown exchange: {$name}"),
+        };
     }
 }
