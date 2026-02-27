@@ -27,11 +27,12 @@ class DetectOpportunity
         ?float $quoteBalanceB = null,
         ?float $baseBalanceB = null,
         int $maxLevels = self::MAX_LEVELS,
+        float $minAmount = 0.0,
     ): ?OpportunityData {
         // A→B: buy on A (spend quoteA), sell on B (spend baseB)
-        $aToB = $this->detect($exchangeA, $bookA, $exchangeB, $bookB, $minProfitRatio, $quoteBalanceA, $baseBalanceB, $maxLevels);
+        $aToB = $this->detect($exchangeA, $bookA, $exchangeB, $bookB, $minProfitRatio, $quoteBalanceA, $baseBalanceB, $maxLevels, $minAmount);
         // B→A: buy on B (spend quoteB), sell on A (spend baseA)
-        $bToA = $this->detect($exchangeB, $bookB, $exchangeA, $bookA, $minProfitRatio, $quoteBalanceB, $baseBalanceA, $maxLevels);
+        $bToA = $this->detect($exchangeB, $bookB, $exchangeA, $bookA, $minProfitRatio, $quoteBalanceB, $baseBalanceA, $maxLevels, $minAmount);
 
         if ($aToB === null && $bToA === null) {
             return null;
@@ -67,6 +68,7 @@ class DetectOpportunity
         ?float $quoteBalance = null,
         ?float $baseBalance = null,
         int $maxLevels = self::MAX_LEVELS,
+        float $minAmount = 0.0,
     ): ?OpportunityData {
         $asks = $buyBook['asks'];
         $bids = $sellBook['bids'];
@@ -119,6 +121,10 @@ class DetectOpportunity
                 $sellRevenue = $this->computeSellRevenue($sellFee, $maxAmountToExecute, $sellSlice);
 
                 if ($buyCost <= 0 || $sellRevenue <= $buyCost) {
+                    continue;
+                }
+
+                if ($minAmount > 0 && $buyCost < $minAmount) {
                     continue;
                 }
 

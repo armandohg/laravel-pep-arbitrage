@@ -22,7 +22,8 @@ class FindArbitrageCommand extends Command
         {--sustain-interval=2 : Seconds between checks during the sustain phase}
         {--stability=0.5 : Profit % drift tolerance during sustain (e.g. 0.5 = ±0.5%)}
         {--once : Run a single discovery poll and exit}
-        {--pretend : Ignore balances and detect the maximum theoretical opportunity (simulation only)}';
+        {--pretend : Ignore balances and detect the maximum theoretical opportunity (simulation only)}
+        {--min-amount=0 : Minimum trade amount in USD/USDT to consider an opportunity (e.g. 5 = $5 minimum)}';
 
     protected $description = 'Monitor PEP order books across exchanges and detect arbitrage opportunities';
 
@@ -39,6 +40,7 @@ class FindArbitrageCommand extends Command
     {
         $interval = (int) $this->option('interval');
         $minProfit = (float) $this->option('min-profit');
+        $minAmount = (float) $this->option('min-amount');
         $sustainDuration = (int) $this->option('sustain');
         $sustainInterval = (int) $this->option('sustain-interval');
         $stability = (float) $this->option('stability');
@@ -46,12 +48,13 @@ class FindArbitrageCommand extends Command
         $pretend = (bool) $this->option('pretend');
 
         $this->info(sprintf(
-            'PEP arbitrage monitor | discovery: %ds | sustain: %ds (check every %ds, tolerance ±%.1f%%) | min-profit: %.2f%%%s',
+            'PEP arbitrage monitor | discovery: %ds | sustain: %ds (check every %ds, tolerance ±%.1f%%) | min-profit: %.2f%% | min-amount: $%.2f%s',
             $interval,
             $sustainDuration,
             $sustainInterval,
             $stability,
             $minProfit * 100,
+            $minAmount,
             $pretend ? ' | pretend mode' : '',
         ));
 
@@ -65,11 +68,11 @@ class FindArbitrageCommand extends Command
 
         do {
             // Phase 1 — Discovery: poll all pairs and find the best opportunity.
-            $best = $this->discoverBestOpportunity($minProfit, $pretend);
+            $best = $this->discoverBestOpportunity($minProfit, $minAmount, $pretend);
 
             if ($best !== null) {
                 // Phase 2 — Sustain: monitor only the winning pair until confirmed or lost.
-                $confirmed = $this->monitorUntilConfirmed($best, $minProfit, $sustainDuration, $sustainInterval, $stability, $pretend, $shouldStop);
+                $confirmed = $this->monitorUntilConfirmed($best, $minProfit, $minAmount, $sustainDuration, $sustainInterval, $stability, $pretend, $shouldStop);
 
                 if ($confirmed) {
                     $this->executeBestOpportunity($best, $pretend);
@@ -87,7 +90,7 @@ class FindArbitrageCommand extends Command
     /**
      * Phase 1 — Poll all exchange pairs and return the best opportunity found, or null.
      */
-    protected function discoverBestOpportunity(float $minProfit, bool $pretend): ?OpportunityData
+    protected function discoverBestOpportunity(float $minProfit, float $minAmount, bool $pretend): ?OpportunityData
     {
         $this->line(sprintf('[%s] <fg=cyan>[DISCOVERY]</> Polling all exchange pairs...', now()->format('H:i:s')));
 
@@ -113,6 +116,7 @@ class FindArbitrageCommand extends Command
                     $pretend ? null : $baseBalances[$exchangeA->getName()],
                     $pretend ? null : $quoteBalances[$exchangeB->getName()],
                     $pretend ? null : $baseBalances[$exchangeB->getName()],
+                    minAmount: $minAmount,
                 );
 
                 if ($opportunity !== null) {
@@ -153,6 +157,7 @@ class FindArbitrageCommand extends Command
     protected function monitorUntilConfirmed(
         OpportunityData $candidate,
         float $minProfit,
+        float $minAmount,
         int $sustainDuration,
         int $sustainInterval,
         float $stability,
@@ -194,6 +199,7 @@ class FindArbitrageCommand extends Command
                     $pretend ? null : $baseBalances[$buyExchange->getName()],
                     $pretend ? null : $quoteBalances[$sellExchange->getName()],
                     $pretend ? null : $baseBalances[$sellExchange->getName()],
+                    minAmount: $minAmount,
                 );
 
                 if ($opportunity === null) {
