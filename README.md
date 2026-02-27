@@ -1,6 +1,6 @@
 # PEP Arbitrage
 
-A real-time arbitrage monitor for **$PEP (Pepecoin)** built with Laravel 12, Livewire 4, and Flux UI. It compares order books across MEXC, CoinEx, and Kraken, persists detected opportunities to a database, and surfaces them in a live dashboard that auto-refreshes every 5 seconds.
+A real-time arbitrage monitor for **$PEP (Pepecoin)** built with Laravel 12, Livewire 4, and Flux UI. It compares order books across MEXC, CoinEx, and Kraken, persists detected opportunities to a database, surfaces them in a live dashboard that auto-refreshes every 5 seconds, and includes an automated rebalancing system that distributes funds across exchanges using DB-backed transfer routes.
 
 ---
 
@@ -89,6 +89,115 @@ If the available balance on either side is zero, no opportunity is persisted for
 
 ---
 
+## Rebalancing
+
+The rebalancing system distributes PEP and USDT evenly across all three exchanges. It computes the ideal target (total ÷ 3 per exchange) and generates the minimum set of transfers needed to reach it, then executes withdrawals through exchange APIs.
+
+### How transfer routes work
+
+Routes are stored in the database, not in config. Before rebalancing, you must sync networks and wallets from the exchanges:
+
+```bash
+# Fetch withdrawal networks and deposit addresses, build all transfer routes
+php artisan exchanges:sync-networks
+```
+
+This command:
+1. Calls each exchange's API to discover available withdrawal networks and their fees
+2. Fetches deposit addresses for each asset/network combination
+3. Seeds Kraken routes from `config/exchanges.php` (Kraken has no sync API)
+4. Builds `transfer_routes` records for every valid from→to permutation
+
+Canonical network codes used internally:
+
+| Exchange-specific | Canonical |
+|---|---|
+| PEP, PEPCHAIN | `PEP` |
+| TRX, TRC20, trc20 | `TRC20` |
+| ETH, ERC20, erc20 | `ERC20` |
+| BEP20, BSC, bsc | `BSC` |
+
+### Rebalance command
+
+```bash
+# Dry-run (default) — shows plan without executing
+php artisan exchanges:rebalance
+
+# Execute transfers
+php artisan exchanges:rebalance --execute
+
+# Force a specific network for all transfers
+php artisan exchanges:rebalance --network=TRC20
+
+# Adjust the tolerance threshold (default 10%)
+php artisan exchanges:rebalance --tolerance=0.05
+
+# Combine options
+php artisan exchanges:rebalance --network=PEP --execute
+```
+
+### Rebalance options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--tolerance=N` | `0.10` | Max allowed deviation per exchange before rebalancing (e.g. `0.10` = 10 %) |
+| `--network=CODE` | — | Force a specific network for all transfers (e.g. `TRC20`, `PEP`, `ERC20`) |
+| `--execute` | — | Execute the transfers (default is dry-run) |
+
+### Dry-run output
+
+```
+Balance rebalance plan [DRY-RUN — use --execute to apply]
+
+Current state:
++----------+-------------+------------------+
+| Exchange | PEP         | USDT-equiv       |
++----------+-------------+------------------+
+| Mexc     | 5,000,000   | 500.00 USDT      |
+| CoinEx   | 1,000,000   | 100.00 USDT      |
+| Kraken   | 1,000,000   | 100.00 USDT      |
++----------+-------------+------------------+
+
+Target per exchange: 2,333,333 PEP  |  233.33 USDT
+
+Transfers needed:
++---+----------+------------------+------------+---------+------------------+--------+
+| # | Currency | Route            | Amount     | Network | Destination      | Notes  |
++---+----------+------------------+------------+---------+------------------+--------+
+| 1 | PEP      | Mexc → CoinEx   | 1,333,333  | [PEP]   | TXabc…def123     |        |
+| 2 | PEP      | Mexc → Kraken   | 1,333,334  | [PEP]   | kraken_key_name  |        |
+| 3 | USDT     | Mexc → CoinEx   | 133.33     | [TRC20] | TXxyz…789        |        |
++---+----------+------------------+------------+---------+------------------+--------+
+```
+
+### Rebalance architecture
+
+```
+exchanges:sync-networks
+         │
+         ├── Mexc::getWithdrawalNetworks()   ← GET /api/v3/capital/config/getall
+         ├── CoinEx::getWithdrawalNetworks() ← GET /v2/assets/all-deposit-withdraw-config
+         ├── Mexc::getDepositAddress()        ← GET /api/v3/capital/deposit/address
+         ├── CoinEx::getDepositAddress()      ← GET /v2/assets/deposit-address
+         │
+         ├── upsert exchange_networks   ← fee, limits, deposit/withdraw flags
+         ├── upsert exchange_wallets    ← deposit addresses per exchange/asset/network
+         └── upsert transfer_routes     ← from→to permutations, FK to wallet
+
+exchanges:rebalance
+         │
+         ├── getBalances() × 3 exchanges
+         ├── getOrderBook('usdt_usd')   ← USDT/USD normalization rate
+         ├── compute surpluses & deficits per currency
+         ├── TransferRouteService::getRouteForTransfer()
+         │        └── queries transfer_routes (cheapest fee, or forced network)
+         │             eagerly loads exchange_wallets (address, memo)
+         │             looks up exchange_networks for exchange-specific network_id
+         └── execute: Exchange::withdraw(currency, amount, address, networkId)
+```
+
+---
+
 ## Requirements
 
 - PHP 8.3+
@@ -138,7 +247,9 @@ KRAKEN_API_KEY=your_kraken_api_key
 KRAKEN_API_SECRET=your_kraken_api_secret
 ```
 
-> **Balance-aware mode** calls private authenticated endpoints to fetch balances. Run with `--pretend` if you only want to monitor spreads without configured API keys.
+For rebalancing, Kraken's deposit addresses and withdrawal key names (Kraken uses named keys, not raw addresses) must be set in `config/exchanges.php` under `kraken.deposit_addresses` and `kraken.withdraw_keys`. These are seeded into the DB automatically by `exchanges:sync-networks`.
+
+> **Balance-aware mode** calls private authenticated endpoints to fetch balances. Run `arbitrage:find` with `--pretend` if you only want to monitor spreads without configured API keys.
 
 ---
 
@@ -264,6 +375,8 @@ php artisan test
 
 ```bash
 php artisan test --compact --filter=ArbitrageDashboard
+php artisan test --compact --filter=Rebalance
+php artisan test --compact --filter=SyncNetworks
 php artisan test --compact tests/Feature/FindArbitrageCommandTest.php
 ```
 
@@ -282,24 +395,43 @@ vendor/bin/pint
 ```
 app/
   Arbitrage/
-    DetectOpportunity.php          # Core profit calculation (walks order books)
+    DetectOpportunity.php              # Core profit calculation (walks order books)
     ValueObjects/
-      OpportunityData.php          # Immutable result value object
+      OpportunityData.php              # Immutable result value object
   Console/Commands/
-    FindArbitrageCommand.php       # arbitrage:find polling loop
+    FindArbitrageCommand.php           # arbitrage:find polling loop
+    ExchangesRebalanceCommand.php      # exchanges:rebalance — plan and execute transfers
+    ExchangesSyncNetworksCommand.php   # exchanges:sync-networks — fetch networks/addresses, build routes
   Exchanges/
     Contracts/ExchangeInterface.php
-    BaseExchange.php               # HTTP client, retry with backoff
+    BaseExchange.php                   # HTTP client, retry with backoff
     Mexc.php
     CoinEx.php
     Kraken.php
   Livewire/
-    ArbitrageDashboard.php         # Dashboard component (filter + stats + table)
+    ArbitrageDashboard.php             # Dashboard component (filter + stats + table)
   Models/
-    ArbitrageOpportunity.php       # Eloquent model + fromOpportunityData()
+    ArbitrageOpportunity.php           # Eloquent model + fromOpportunityData()
+    ExchangeNetwork.php                # Withdrawal networks per exchange/asset with fees
+    ExchangeWallet.php                 # Deposit addresses per exchange/asset/network
+    TransferRoute.php                  # Active transfer routes (from→to, FK to wallet)
+  Rebalance/
+    RebalanceService.php               # Orchestrates balance fetch, plan, and execution
+    TransferRouteService.php           # Resolves cheapest (or forced) DB-backed route
+    Transfer.php                       # Value object: one transfer (from, to, amount, address…)
+    RebalancePlan.php                  # Value object: full plan (states, targets, transfers)
+    ExchangeState.php                  # Value object: balances for one exchange
 database/
-  factories/ArbitrageOpportunityFactory.php
-  migrations/*_create_arbitrage_opportunities_table.php
+  factories/
+    ArbitrageOpportunityFactory.php
+    ExchangeNetworkFactory.php
+    ExchangeWalletFactory.php
+    TransferRouteFactory.php
+  migrations/
+    *_create_arbitrage_opportunities_table.php
+    *_create_exchange_networks_table.php
+    *_create_exchange_wallets_table.php
+    *_create_transfer_routes_table.php
 config/
-  exchanges.php                    # API credentials + base URLs
+  exchanges.php                        # API credentials, base URLs, Kraken withdraw keys
 ```
