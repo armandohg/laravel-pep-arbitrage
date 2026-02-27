@@ -10,7 +10,10 @@ final readonly class Transfer
         public string $currency,
         public float $amount,
         public string $network,
+        public string $networkId,
+        public string $address,
         public float $networkFee,
+        public ?string $memo = null,
         public ?string $krakenStep = null,
     ) {}
 }

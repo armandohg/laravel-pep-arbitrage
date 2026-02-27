@@ -108,6 +108,42 @@ class Mexc extends BaseExchange
     }
 
     /**
+     * Fetch withdrawal network configurations for the given assets.
+     *
+     * @param  string[]  $assets
+     * @return array<int, array{coin: string, networkList: array<int, array{network: string, name: string, withdrawFee: string, withdrawMin: string, withdrawMax: string, depositEnable: bool, withdrawEnable: bool}>}>
+     */
+    public function getWithdrawalNetworks(array $assets): array
+    {
+        $url = config('exchanges.mexc.base_url').'/api/v3/capital/config/getall';
+        $response = $this->request('GET', $url, [], true);
+
+        $assetSet = array_flip(array_map('strtoupper', $assets));
+
+        return array_values(array_filter(
+            $response,
+            fn (array $item): bool => isset($assetSet[strtoupper($item['coin'] ?? '')])
+        ));
+    }
+
+    /**
+     * Fetch the deposit address for a currency + network.
+     *
+     * @return array{address: string, memo: string|null, network: string}
+     */
+    public function getDepositAddress(string $currency, string $networkId): array
+    {
+        $url = config('exchanges.mexc.base_url').'/api/v3/capital/deposit/address';
+        $response = $this->request('GET', $url, ['coin' => $currency, 'network' => $networkId], true);
+
+        return [
+            'address' => $response['address'] ?? '',
+            'memo' => $response['tag'] ?? null,
+            'network' => $response['network'] ?? $networkId,
+        ];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function withdraw(string $currency, float $amount, string $address, string $network): array

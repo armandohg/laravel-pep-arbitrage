@@ -12,10 +12,10 @@ final class RebalanceService
         private readonly Mexc $mexc,
         private readonly CoinEx $coinEx,
         private readonly Kraken $kraken,
-        private readonly NetworkRouter $networkRouter,
+        private readonly TransferRouteService $transferRouteService,
     ) {}
 
-    public function plan(float $tolerance = 0.10): RebalancePlan
+    public function plan(float $tolerance = 0.10, ?string $networkOverride = null): RebalancePlan
     {
         // Fetch balances
         $mexcBalances = $this->mexc->getBalances();
@@ -69,8 +69,8 @@ final class RebalanceService
         }
 
         $transfers = array_merge(
-            $this->computeTransfers('PEP', $states, $targets),
-            $this->computeTransfers('USDT', $states, $targets),
+            $this->computeTransfers('PEP', $states, $targets, $networkOverride),
+            $this->computeTransfers('USDT', $states, $targets, $networkOverride),
         );
 
         return new RebalancePlan(
@@ -116,7 +116,7 @@ final class RebalanceService
      * @param  ExchangeState[]  $targets
      * @return Transfer[]
      */
-    private function computeTransfers(string $currency, array $states, array $targets): array
+    private function computeTransfers(string $currency, array $states, array $targets, ?string $networkOverride = null): array
     {
         $isPep = $currency === 'PEP';
 
@@ -147,7 +147,7 @@ final class RebalanceService
                 }
 
                 $amount = min($surplus, $deficit);
-                $route = $this->networkRouter->bestNetwork($currency, $fromExchange, $toExchange);
+                $route = $this->transferRouteService->getRouteForTransfer($fromExchange, $toExchange, $currency, $networkOverride);
 
                 $krakenStep = null;
                 if ($fromExchange === 'Kraken' && $currency === 'USDT') {
@@ -161,8 +161,11 @@ final class RebalanceService
                     toExchange: $toExchange,
                     currency: $currency,
                     amount: $amount,
-                    network: $route['network'],
+                    network: $route['network_code'],
+                    networkId: $route['network_id'],
+                    address: $route['address'],
                     networkFee: $route['fee'],
+                    memo: $route['memo'],
                     krakenStep: $krakenStep,
                 );
 
@@ -182,8 +185,6 @@ final class RebalanceService
                 $this->kraken->buyUsdt($transfer->amount);
             }
 
-            $address = $this->resolveDestinationAddress($transfer->toExchange, $transfer->currency, $transfer->fromExchange);
-
             $exchange = match ($transfer->fromExchange) {
                 'Mexc' => $this->mexc,
                 'CoinEx' => $this->coinEx,
@@ -191,26 +192,7 @@ final class RebalanceService
                 default => throw new \RuntimeException("Unknown exchange: {$transfer->fromExchange}"),
             };
 
-            $exchange->withdraw($transfer->currency, $transfer->amount, $address, $transfer->network);
+            $exchange->withdraw($transfer->currency, $transfer->amount, $transfer->address, $transfer->networkId);
         }
-    }
-
-    private function resolveDestinationAddress(string $toExchange, string $currency, string $fromExchange): string
-    {
-        $exchangeKey = match ($toExchange) {
-            'Mexc' => 'mexc',
-            'CoinEx' => 'coinex',
-            'Kraken' => 'kraken',
-            default => throw new \RuntimeException("Unknown exchange: {$toExchange}"),
-        };
-
-        // For Kraken withdrawals, use named withdrawal keys
-        if ($fromExchange === 'Kraken') {
-            $keyName = "{$currency}_to_{$toExchange}";
-
-            return config("exchanges.kraken.withdraw_keys.{$keyName}", '');
-        }
-
-        return config("exchanges.{$exchangeKey}.deposit_addresses.{$currency}", '');
     }
 }

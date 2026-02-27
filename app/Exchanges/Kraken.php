@@ -100,6 +100,27 @@ class Kraken extends BaseExchange
     }
 
     /**
+     * Kraken does not expose a withdrawal network config API — returns empty.
+     *
+     * @param  string[]  $assets
+     * @return array<int, mixed>
+     */
+    public function getWithdrawalNetworks(array $assets): array
+    {
+        return [];
+    }
+
+    /**
+     * Kraken does not expose a deposit address API — returns empty stub.
+     *
+     * @return array{address: string, memo: string|null, network: string}
+     */
+    public function getDepositAddress(string $currency, string $networkId): array
+    {
+        return ['address' => '', 'memo' => null, 'network' => $networkId];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function withdraw(string $currency, float $amount, string $address, string $network): array

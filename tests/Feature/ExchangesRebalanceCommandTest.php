@@ -3,22 +3,48 @@
 use App\Exchanges\CoinEx;
 use App\Exchanges\Kraken;
 use App\Exchanges\Mexc;
+use App\Models\ExchangeNetwork;
+use App\Models\ExchangeWallet;
+use App\Models\TransferRoute;
 
 beforeEach(function () {
-    config()->set('exchanges.networks', [
-        'PEP' => ['fee' => 1.0, 'currency' => 'PEP', 'supported_by' => ['Mexc', 'CoinEx', 'Kraken']],
-        'TRC20' => ['fee' => 1.0, 'currency' => 'USDT', 'supported_by' => ['Mexc', 'CoinEx', 'Kraken']],
-        'ERC20' => ['fee' => 10.0, 'currency' => 'USDT', 'supported_by' => ['Mexc', 'CoinEx', 'Kraken']],
-    ]);
-
-    config()->set('exchanges.mexc.deposit_addresses', ['PEP' => 'mexc_pep_addr', 'USDT' => 'mexc_usdt_addr']);
-    config()->set('exchanges.coinex.deposit_addresses', ['PEP' => 'coinex_pep_addr', 'USDT' => 'coinex_usdt_addr']);
-    config()->set('exchanges.kraken.deposit_addresses', ['PEP' => 'kraken_pep_addr', 'USDT' => 'kraken_usdt_addr']);
-    config()->set('exchanges.kraken.withdraw_keys', [
-        'PEP_to_Mexc' => 'key_pep_mexc', 'PEP_to_CoinEx' => 'key_pep_coinex',
-        'USDT_to_Mexc' => 'key_usdt_mexc', 'USDT_to_CoinEx' => 'key_usdt_coinex',
-    ]);
+    seedTransferRoutes();
 });
+
+function seedTransferRoutes(): void
+{
+    $routes = [
+        ['Mexc', 'CoinEx', 'PEP', 'PEP', 'coinex_pep_addr', 1.0],
+        ['Mexc', 'Kraken', 'PEP', 'PEP', 'kraken_pep_addr', 1.0],
+        ['CoinEx', 'Mexc', 'PEP', 'PEP', 'mexc_pep_addr', 1.0],
+        ['CoinEx', 'Kraken', 'PEP', 'PEP', 'kraken_pep_addr', 1.0],
+        ['Kraken', 'Mexc', 'PEP', 'PEP', 'key_pep_mexc', 1.0],
+        ['Kraken', 'CoinEx', 'PEP', 'PEP', 'key_pep_coinex', 1.0],
+        ['Mexc', 'CoinEx', 'USDT', 'TRC20', 'coinex_usdt_addr', 1.0],
+        ['Mexc', 'Kraken', 'USDT', 'TRC20', 'kraken_usdt_addr', 1.0],
+        ['CoinEx', 'Mexc', 'USDT', 'TRC20', 'mexc_usdt_addr', 1.0],
+        ['CoinEx', 'Kraken', 'USDT', 'TRC20', 'kraken_usdt_addr', 1.0],
+        ['Kraken', 'Mexc', 'USDT', 'TRC20', 'key_usdt_mexc', 1.0],
+        ['Kraken', 'CoinEx', 'USDT', 'TRC20', 'key_usdt_coinex', 1.0],
+    ];
+
+    foreach ($routes as [$from, $to, $asset, $networkCode, $address, $fee]) {
+        $wallet = ExchangeWallet::query()->updateOrCreate(
+            ['exchange' => $to, 'asset' => $asset, 'network_code' => $networkCode],
+            ['address' => $address, 'memo' => null, 'is_active' => true]
+        );
+
+        ExchangeNetwork::query()->updateOrCreate(
+            ['exchange' => $from, 'asset' => $asset, 'network_code' => $networkCode],
+            ['network_id' => $networkCode, 'network_name' => $networkCode, 'fee' => $fee, 'min_amount' => 0, 'max_amount' => 0, 'deposit_enabled' => true, 'withdraw_enabled' => true]
+        );
+
+        TransferRoute::query()->updateOrCreate(
+            ['from_exchange' => $from, 'to_exchange' => $to, 'asset' => $asset, 'network_code' => $networkCode],
+            ['wallet_id' => $wallet->id, 'fee' => $fee, 'is_active' => true]
+        );
+    }
+}
 
 function mockExchanges(array $mexcBalances, array $coinexBalances, array $krakenBalances, float $usdtUsdRate = 1.0): void
 {
@@ -87,6 +113,18 @@ test('dry-run does not call withdraw', function () {
         ->assertSuccessful();
 });
 
+test('dry-run shows destination address column', function () {
+    mockExchanges(
+        ['PEP' => ['available' => 4_000_000], 'USDT' => ['available' => 400.0]],
+        ['PEP' => ['available' => 1_000_000], 'USDT' => ['available' => 100.0]],
+        ['PEP' => ['available' => 1_000_000], 'USD' => ['available' => 100.0]],
+    );
+
+    $this->artisan('exchanges:rebalance')
+        ->assertSuccessful()
+        ->expectsOutputToContain('Destination');
+});
+
 test('--execute calls withdraw for each transfer', function () {
     $mexcMock = Mockery::mock(Mexc::class);
     $coinexMock = Mockery::mock(CoinEx::class);
@@ -97,7 +135,6 @@ test('--execute calls withdraw for each transfer', function () {
     $krakenMock->allows('getBalances')->andReturn(['PEP' => ['available' => 1_000_000], 'USD' => ['available' => 200.0]]);
     $krakenMock->allows('getOrderBook')->with('usdt_usd')->andReturn(['asks' => [[1.0, 1000]], 'bids' => [[0.999, 1000]]]);
 
-    // PEP imbalance: Mexc sends to CoinEx and/or Kraken
     $mexcMock->shouldReceive('withdraw')->atLeast()->once()->andReturn(['success' => true]);
     $coinexMock->allows('withdraw')->andReturn(['success' => true]);
     $krakenMock->allows('withdraw')->andReturn(['success' => true]);
@@ -116,7 +153,6 @@ test('--execute calls buyUsdt before Kraken withdraw', function () {
     $coinexMock = Mockery::mock(CoinEx::class);
     $krakenMock = Mockery::mock(Kraken::class);
 
-    // Kraken has lots of USD (needs to send USDT) — USDT imbalance
     $mexcMock->allows('getBalances')->andReturn(['PEP' => ['available' => 2_000_000], 'USDT' => ['available' => 100.0]]);
     $coinexMock->allows('getBalances')->andReturn(['PEP' => ['available' => 2_000_000], 'USDT' => ['available' => 100.0]]);
     $krakenMock->allows('getBalances')->andReturn(['PEP' => ['available' => 2_000_000], 'USD' => ['available' => 400.0]]);
@@ -133,4 +169,16 @@ test('--execute calls buyUsdt before Kraken withdraw', function () {
 
     $this->artisan('exchanges:rebalance --execute')
         ->assertSuccessful();
+});
+
+test('--network option forces specific network', function () {
+    mockExchanges(
+        ['PEP' => ['available' => 4_000_000], 'USDT' => ['available' => 200.0]],
+        ['PEP' => ['available' => 1_000_000], 'USDT' => ['available' => 200.0]],
+        ['PEP' => ['available' => 1_000_000], 'USD' => ['available' => 200.0]],
+    );
+
+    $this->artisan('exchanges:rebalance --network=PEP')
+        ->assertSuccessful()
+        ->expectsOutputToContain('[PEP]');
 });

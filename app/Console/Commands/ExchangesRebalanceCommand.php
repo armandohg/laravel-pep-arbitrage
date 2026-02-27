@@ -10,6 +10,7 @@ final class ExchangesRebalanceCommand extends Command
 {
     protected $signature = 'exchanges:rebalance
         {--tolerance=0.10 : Allowed deviation per exchange (default 10%)}
+        {--network= : Force a specific network (e.g. ERC20, TRC20, PEP)}
         {--execute : Execute the transfers (default is dry-run)}';
 
     protected $description = 'Rebalance PEP and USDT across all exchanges';
@@ -23,8 +24,9 @@ final class ExchangesRebalanceCommand extends Command
     {
         $tolerance = (float) $this->option('tolerance');
         $execute = (bool) $this->option('execute');
+        $network = $this->option('network') ?: null;
 
-        $plan = $this->rebalanceService->plan($tolerance);
+        $plan = $this->rebalanceService->plan($tolerance, $network);
 
         $label = $execute ? '' : ' [DRY-RUN — use --execute to apply]';
         $this->info("Balance rebalance plan{$label}");
@@ -95,16 +97,20 @@ final class ExchangesRebalanceCommand extends Command
         $rows = [];
         foreach ($plan->transfers as $i => $transfer) {
             $note = $transfer->krakenStep !== null ? '  ⚠  '.$transfer->krakenStep : '';
+            $addressPreview = strlen($transfer->address) > 16
+                ? substr($transfer->address, 0, 8).'…'.substr($transfer->address, -6)
+                : $transfer->address;
             $rows[] = [
                 $i + 1,
                 $transfer->currency,
                 "{$transfer->fromExchange} → {$transfer->toExchange}",
                 number_format($transfer->amount, $transfer->currency === 'PEP' ? 0 : 2),
                 "[{$transfer->network}]",
+                $addressPreview,
                 "fee ~{$transfer->networkFee} {$transfer->currency}{$note}",
             ];
         }
 
-        $this->table(['#', 'Currency', 'Route', 'Amount', 'Network', 'Notes'], $rows);
+        $this->table(['#', 'Currency', 'Route', 'Amount', 'Network', 'Destination', 'Notes'], $rows);
     }
 }

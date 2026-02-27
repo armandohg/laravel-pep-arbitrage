@@ -92,6 +92,44 @@ class CoinEx extends BaseExchange
     }
 
     /**
+     * Fetch withdrawal network configurations for the given assets.
+     *
+     * @param  string[]  $assets
+     * @return array<int, array{ccy: string, chains: array<int, array{chain: string, name: string, withdrawFee: string, minWithdrawAmount: string, maxWithdrawAmount: string, isDepositEnable: bool, isWithdrawEnable: bool}>}>
+     */
+    public function getWithdrawalNetworks(array $assets): array
+    {
+        $url = config('exchanges.coinex.base_url').'/v2/assets/all-deposit-withdraw-config';
+        $response = $this->request('GET', $url, [], true);
+
+        $assetSet = array_flip(array_map('strtoupper', $assets));
+
+        return array_values(array_filter(
+            $response['data'] ?? [],
+            fn (array $item): bool => isset($assetSet[strtoupper($item['ccy'] ?? '')])
+        ));
+    }
+
+    /**
+     * Fetch the deposit address for a currency + network.
+     *
+     * @return array{address: string, memo: string|null, network: string}
+     */
+    public function getDepositAddress(string $currency, string $networkId): array
+    {
+        $url = config('exchanges.coinex.base_url').'/v2/assets/deposit-address';
+        $response = $this->request('GET', $url, ['ccy' => $currency, 'chain' => $networkId], true);
+
+        $data = $response['data'] ?? [];
+
+        return [
+            'address' => $data['address'] ?? '',
+            'memo' => $data['memo'] ?? null,
+            'network' => $data['chain'] ?? $networkId,
+        ];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function withdraw(string $currency, float $amount, string $address, string $network): array
