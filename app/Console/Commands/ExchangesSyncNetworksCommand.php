@@ -100,8 +100,12 @@ final class ExchangesSyncNetworksCommand extends Command
                     ]
                 );
 
-                // Fetch deposit address on this exchange for each asset/network
-                if ($depositEnabled) {
+                // Only fetch deposit addresses for canonical networks we recognise.
+                // Exotic network IDs (e.g. "BNB SMART CHAIN(BEP20)") contain special
+                // characters that break HMAC signature computation.
+                $isCanonical = array_key_exists($networkId, self::NETWORK_CANONICAL);
+
+                if ($depositEnabled && $isCanonical) {
                     try {
                         $addrData = $exchange->getDepositAddress($asset, $networkId);
                         if (! empty($addrData['address'])) {

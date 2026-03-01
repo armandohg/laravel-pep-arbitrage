@@ -73,7 +73,7 @@ class Mexc extends BaseExchange
         if ($signed) {
             $timestamp = (int) (microtime(true) * 1000);
             $data['timestamp'] = $timestamp;
-            $data['recvWindow'] = 5000;
+            $data['recvWindow'] = 60000;
 
             $queryString = http_build_query($data);
             $signature = hash_hmac('sha256', $queryString, $this->apiSecret);
@@ -98,7 +98,7 @@ class Mexc extends BaseExchange
         if ($signed && strtoupper($method) === 'GET') {
             $timestamp = (int) (microtime(true) * 1000);
             $data['timestamp'] = $timestamp;
-            $data['recvWindow'] = 5000;
+            $data['recvWindow'] = 60000;
 
             $queryString = http_build_query($data);
             $data['signature'] = hash_hmac('sha256', $queryString, $this->apiSecret);
