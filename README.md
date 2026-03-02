@@ -432,6 +432,7 @@ app/
   Exchanges/
     Contracts/ExchangeInterface.php    # getOrderBook, getBalances, placeOrder, withdraw, getTxFee
     BaseExchange.php                   # HTTP client, retry with backoff
+    ExchangeRegistry.php               # Holds all exchange instances; add new exchanges here + AppServiceProvider
     Mexc.php
     CoinEx.php
     Kraken.php

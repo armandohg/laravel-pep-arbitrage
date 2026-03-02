@@ -4,21 +4,14 @@ namespace App\Arbitrage;
 
 use App\Arbitrage\ValueObjects\ExecutionResult;
 use App\Arbitrage\ValueObjects\OpportunityData;
-use App\Exchanges\CoinEx;
 use App\Exchanges\Contracts\ExchangeInterface;
-use App\Exchanges\Kraken;
-use App\Exchanges\Mexc;
+use App\Exchanges\ExchangeRegistry;
 use Illuminate\Support\Facades\Log;
-use RuntimeException;
 use Throwable;
 
 class ExecuteArbitrage
 {
-    public function __construct(
-        private readonly Mexc $mexc,
-        private readonly CoinEx $coinex,
-        private readonly Kraken $kraken,
-    ) {}
+    public function __construct(private readonly ExchangeRegistry $registry) {}
 
     /**
      * Execute buy and sell orders for the given opportunity.
@@ -127,11 +120,6 @@ class ExecuteArbitrage
 
     private function exchangeByName(string $name): ExchangeInterface
     {
-        return match ($name) {
-            'Mexc' => $this->mexc,
-            'CoinEx' => $this->coinex,
-            'Kraken' => $this->kraken,
-            default => throw new RuntimeException("Unknown exchange: {$name}"),
-        };
+        return $this->registry->get($name);
     }
 }

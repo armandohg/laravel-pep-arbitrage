@@ -2,28 +2,24 @@
 
 namespace App\Rebalance;
 
-use App\Exchanges\CoinEx;
-use App\Exchanges\Kraken;
-use App\Exchanges\Mexc;
+use App\Exchanges\ExchangeRegistry;
 
 final class RebalanceService
 {
     public function __construct(
-        private readonly Mexc $mexc,
-        private readonly CoinEx $coinEx,
-        private readonly Kraken $kraken,
+        private readonly ExchangeRegistry $registry,
         private readonly TransferRouteService $transferRouteService,
     ) {}
 
     public function plan(float $tolerance = 0.10, ?string $networkOverride = null): RebalancePlan
     {
         // Fetch balances
-        $mexcBalances = $this->mexc->getBalances();
-        $coinexBalances = $this->coinEx->getBalances();
-        $krakenBalances = $this->kraken->getBalances();
+        $mexcBalances = $this->registry->get('Mexc')->getBalances();
+        $coinexBalances = $this->registry->get('CoinEx')->getBalances();
+        $krakenBalances = $this->registry->get('Kraken')->getBalances();
 
         // Get USDT/USD rate
-        $usdtUsdBook = $this->kraken->getOrderBook('usdt_usd');
+        $usdtUsdBook = $this->registry->get('Kraken')->getOrderBook('usdt_usd');
         $usdtUsdRate = isset($usdtUsdBook['asks'][0][0]) ? (float) $usdtUsdBook['asks'][0][0] : 1.0;
 
         $mexcPep = (float) ($mexcBalances['PEP']['available'] ?? 0);
@@ -182,17 +178,13 @@ final class RebalanceService
         foreach ($plan->transfers as $transfer) {
             // If Kraken needs to buy USDT first
             if ($transfer->krakenStep !== null && str_starts_with($transfer->krakenStep, 'buy')) {
-                $this->kraken->buyUsdt($transfer->amount);
+                /** @var \App\Exchanges\Kraken $kraken */
+                $kraken = $this->registry->get('Kraken');
+                $kraken->buyUsdt($transfer->amount);
             }
 
-            $exchange = match ($transfer->fromExchange) {
-                'Mexc' => $this->mexc,
-                'CoinEx' => $this->coinEx,
-                'Kraken' => $this->kraken,
-                default => throw new \RuntimeException("Unknown exchange: {$transfer->fromExchange}"),
-            };
-
-            $exchange->withdraw($transfer->currency, $transfer->amount, $transfer->address, $transfer->networkId);
+            $this->registry->get($transfer->fromExchange)
+                ->withdraw($transfer->currency, $transfer->amount, $transfer->address, $transfer->networkId);
         }
     }
 }

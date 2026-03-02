@@ -27,11 +27,7 @@
     @endif
 
     <div class="grid gap-4 sm:grid-cols-3">
-        @foreach ([
-            'MEXC'   => $this->mexcBalances,
-            'CoinEx' => $this->coinexBalances,
-            'Kraken' => $this->krakenBalances,
-        ] as $name => $balances)
+        @foreach ($this->balances as $name => $balances)
             <flux:card>
                 <flux:heading size="sm" class="mb-3">{{ $name }}</flux:heading>
 

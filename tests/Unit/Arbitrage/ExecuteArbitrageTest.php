@@ -3,6 +3,7 @@
 use App\Arbitrage\ExecuteArbitrage;
 use App\Arbitrage\ValueObjects\OpportunityData;
 use App\Exchanges\CoinEx;
+use App\Exchanges\ExchangeRegistry;
 use App\Exchanges\Kraken;
 use App\Exchanges\Mexc;
 use Illuminate\Support\Facades\Config;
@@ -44,7 +45,7 @@ it('returns success result when both orders are placed', function () {
     $kraken = Mockery::mock(Kraken::class);
     $kraken->shouldReceive('getName')->andReturn('Kraken');
 
-    $service = new ExecuteArbitrage($mexc, $coinex, $kraken);
+    $service = new ExecuteArbitrage(new ExchangeRegistry($mexc, $coinex, $kraken));
     $result = $service->execute(makeOpportunity(), 1.0);
 
     expect($result->success)->toBeTrue()
@@ -68,7 +69,7 @@ it('returns failed result with failedSide=buy when buy order throws', function (
     $kraken = Mockery::mock(Kraken::class);
     $kraken->shouldReceive('getName')->andReturn('Kraken');
 
-    $service = new ExecuteArbitrage($mexc, $coinex, $kraken);
+    $service = new ExecuteArbitrage(new ExchangeRegistry($mexc, $coinex, $kraken));
     $result = $service->execute(makeOpportunity(), 1.0);
 
     expect($result->success)->toBeFalse()
@@ -92,7 +93,7 @@ it('logs critical and returns partial result when sell order fails after buy suc
     $kraken = Mockery::mock(Kraken::class);
     $kraken->shouldReceive('getName')->andReturn('Kraken');
 
-    $service = new ExecuteArbitrage($mexc, $coinex, $kraken);
+    $service = new ExecuteArbitrage(new ExchangeRegistry($mexc, $coinex, $kraken));
     $result = $service->execute(makeOpportunity(), 1.0);
 
     expect($result->success)->toBeFalse()
@@ -123,7 +124,7 @@ it('converts price to USD when sell exchange is Kraken', function () {
     $coinex = Mockery::mock(CoinEx::class);
     $coinex->shouldReceive('getName')->andReturn('CoinEx');
 
-    $service = new ExecuteArbitrage($mexc, $coinex, $kraken);
+    $service = new ExecuteArbitrage(new ExchangeRegistry($mexc, $coinex, $kraken));
     $result = $service->execute(makeOpportunity('Mexc', 'Kraken'), 1.05);
 
     expect($result->success)->toBeTrue()
@@ -149,7 +150,7 @@ it('uses market orders when order_type is market', function () {
     $kraken = Mockery::mock(Kraken::class);
     $kraken->shouldReceive('getName')->andReturn('Kraken');
 
-    $service = new ExecuteArbitrage($mexc, $coinex, $kraken);
+    $service = new ExecuteArbitrage(new ExchangeRegistry($mexc, $coinex, $kraken));
     $result = $service->execute(makeOpportunity(), 1.0);
 
     expect($result->success)->toBeTrue();

@@ -2,63 +2,32 @@
 
 namespace App\Livewire;
 
-use App\Exchanges\CoinEx;
-use App\Exchanges\Kraken;
-use App\Exchanges\Mexc;
+use App\Exchanges\ExchangeRegistry;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
 use Throwable;
 
 class ExchangeBalances extends Component
 {
+    public function __construct(private readonly ExchangeRegistry $registry) {}
+
     /**
-     * @return array<string, array{available: float}|string>
+     * @return array<string, array<string, array{available: float}>|string>
      */
     #[Computed]
-    public function mexcBalances(): array|string
+    public function balances(): array
     {
-        try {
-            return $this->sortByAvailable(app(Mexc::class)->getBalances());
-        } catch (Throwable $e) {
-            return $e->getMessage();
+        $result = [];
+
+        foreach ($this->registry->all() as $exchange) {
+            try {
+                $result[$exchange->getName()] = $this->sortByAvailable($exchange->getBalances());
+            } catch (Throwable $e) {
+                $result[$exchange->getName()] = $e->getMessage();
+            }
         }
-    }
 
-    /**
-     * @return array<string, array{available: float}|string>
-     */
-    #[Computed]
-    public function coinexBalances(): array|string
-    {
-        try {
-            return $this->sortByAvailable(app(CoinEx::class)->getBalances());
-        } catch (Throwable $e) {
-            return $e->getMessage();
-        }
-    }
-
-    /**
-     * @return array<string, array{available: float}|string>
-     */
-    #[Computed]
-    public function krakenBalances(): array|string
-    {
-        try {
-            return $this->sortByAvailable(app(Kraken::class)->getBalances());
-        } catch (Throwable $e) {
-            return $e->getMessage();
-        }
-    }
-
-    /**
-     * @param  array<string, array{available: float}>  $balances
-     * @return array<string, array{available: float}>
-     */
-    private function sortByAvailable(array $balances): array
-    {
-        uasort($balances, fn (array $a, array $b) => $b['available'] <=> $a['available']);
-
-        return $balances;
+        return $result;
     }
 
     /**
@@ -69,7 +38,7 @@ class ExchangeBalances extends Component
     {
         $totals = [];
 
-        foreach ([$this->mexcBalances, $this->coinexBalances, $this->krakenBalances] as $balances) {
+        foreach ($this->balances as $balances) {
             if (is_string($balances)) {
                 continue;
             }
@@ -82,6 +51,17 @@ class ExchangeBalances extends Component
         arsort($totals);
 
         return $totals;
+    }
+
+    /**
+     * @param  array<string, array{available: float}>  $balances
+     * @return array<string, array{available: float}>
+     */
+    private function sortByAvailable(array $balances): array
+    {
+        uasort($balances, fn (array $a, array $b) => $b['available'] <=> $a['available']);
+
+        return $balances;
     }
 
     public function render(): \Illuminate\View\View

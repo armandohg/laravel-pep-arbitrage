@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Exchanges\CoinEx;
+use App\Exchanges\ExchangeRegistry;
 use App\Exchanges\Kraken;
 use App\Exchanges\Mexc;
 use Carbon\CarbonImmutable;
@@ -31,6 +32,12 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(Kraken::class, fn () => new Kraken(
             config('exchanges.kraken.api_key') ?? '',
             config('exchanges.kraken.api_secret') ?? '',
+        ));
+
+        $this->app->bind(ExchangeRegistry::class, fn ($app) => new ExchangeRegistry(
+            $app->make(Mexc::class),
+            $app->make(CoinEx::class),
+            $app->make(Kraken::class),
         ));
     }
 

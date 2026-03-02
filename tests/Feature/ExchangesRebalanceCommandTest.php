@@ -52,6 +52,9 @@ function mockExchanges(array $mexcBalances, array $coinexBalances, array $kraken
     $coinexMock = Mockery::mock(CoinEx::class);
     $krakenMock = Mockery::mock(Kraken::class);
 
+    $mexcMock->allows('getName')->andReturn('Mexc');
+    $coinexMock->allows('getName')->andReturn('CoinEx');
+    $krakenMock->allows('getName')->andReturn('Kraken');
     $mexcMock->allows('getBalances')->andReturn($mexcBalances);
     $coinexMock->allows('getBalances')->andReturn($coinexBalances);
     $krakenMock->allows('getBalances')->andReturn($krakenBalances);
@@ -96,6 +99,9 @@ test('dry-run does not call withdraw', function () {
     $coinexMock = Mockery::mock(CoinEx::class);
     $krakenMock = Mockery::mock(Kraken::class);
 
+    $mexcMock->allows('getName')->andReturn('Mexc');
+    $coinexMock->allows('getName')->andReturn('CoinEx');
+    $krakenMock->allows('getName')->andReturn('Kraken');
     $mexcMock->allows('getBalances')->andReturn(['PEP' => ['available' => 4_000_000], 'USDT' => ['available' => 400.0]]);
     $coinexMock->allows('getBalances')->andReturn(['PEP' => ['available' => 1_000_000], 'USDT' => ['available' => 100.0]]);
     $krakenMock->allows('getBalances')->andReturn(['PEP' => ['available' => 1_000_000], 'USD' => ['available' => 100.0]]);
@@ -130,6 +136,9 @@ test('--execute calls withdraw for each transfer', function () {
     $coinexMock = Mockery::mock(CoinEx::class);
     $krakenMock = Mockery::mock(Kraken::class);
 
+    $mexcMock->allows('getName')->andReturn('Mexc');
+    $coinexMock->allows('getName')->andReturn('CoinEx');
+    $krakenMock->allows('getName')->andReturn('Kraken');
     $mexcMock->allows('getBalances')->andReturn(['PEP' => ['available' => 4_000_000], 'USDT' => ['available' => 200.0]]);
     $coinexMock->allows('getBalances')->andReturn(['PEP' => ['available' => 1_000_000], 'USDT' => ['available' => 200.0]]);
     $krakenMock->allows('getBalances')->andReturn(['PEP' => ['available' => 1_000_000], 'USD' => ['available' => 200.0]]);
@@ -153,6 +162,9 @@ test('--execute calls buyUsdt before Kraken withdraw', function () {
     $coinexMock = Mockery::mock(CoinEx::class);
     $krakenMock = Mockery::mock(Kraken::class);
 
+    $mexcMock->allows('getName')->andReturn('Mexc');
+    $coinexMock->allows('getName')->andReturn('CoinEx');
+    $krakenMock->allows('getName')->andReturn('Kraken');
     $mexcMock->allows('getBalances')->andReturn(['PEP' => ['available' => 2_000_000], 'USDT' => ['available' => 100.0]]);
     $coinexMock->allows('getBalances')->andReturn(['PEP' => ['available' => 2_000_000], 'USDT' => ['available' => 100.0]]);
     $krakenMock->allows('getBalances')->andReturn(['PEP' => ['available' => 2_000_000], 'USD' => ['available' => 400.0]]);

@@ -1,6 +1,7 @@
 <?php
 
 use App\Exchanges\CoinEx;
+use App\Exchanges\ExchangeRegistry;
 use App\Exchanges\Kraken;
 use App\Exchanges\Mexc;
 use App\Models\ExchangeNetwork;
@@ -54,6 +55,9 @@ function makeService(array $mexcBalances, array $coinexBalances, array $krakenBa
     $coinex = Mockery::mock(CoinEx::class);
     $kraken = Mockery::mock(Kraken::class);
 
+    $mexc->allows('getName')->andReturn('Mexc');
+    $coinex->allows('getName')->andReturn('CoinEx');
+    $kraken->allows('getName')->andReturn('Kraken');
     $mexc->allows('getBalances')->andReturn($mexcBalances);
     $coinex->allows('getBalances')->andReturn($coinexBalances);
     $kraken->allows('getBalances')->andReturn($krakenBalances);
@@ -62,7 +66,7 @@ function makeService(array $mexcBalances, array $coinexBalances, array $krakenBa
         'bids' => [[$usdtUsdRate - 0.001, 1000]],
     ]);
 
-    return new RebalanceService($mexc, $coinex, $kraken, app(TransferRouteService::class));
+    return new RebalanceService(new ExchangeRegistry($mexc, $coinex, $kraken), app(TransferRouteService::class));
 }
 
 test('returns isBalanced true when all exchanges are within tolerance', function () {

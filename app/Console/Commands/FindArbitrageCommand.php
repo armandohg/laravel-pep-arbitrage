@@ -5,13 +5,11 @@ namespace App\Console\Commands;
 use App\Arbitrage\DetectOpportunity;
 use App\Arbitrage\ExecuteArbitrage;
 use App\Arbitrage\ValueObjects\OpportunityData;
-use App\Exchanges\CoinEx;
-use App\Exchanges\Kraken;
-use App\Exchanges\Mexc;
+use App\Exchanges\Contracts\ExchangeInterface;
+use App\Exchanges\ExchangeRegistry;
 use App\Models\ArbitrageOpportunity;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
-use RuntimeException;
 use Throwable;
 
 class FindArbitrageCommand extends Command
@@ -32,9 +30,7 @@ class FindArbitrageCommand extends Command
     private float $usdtUsdRate = 1.0;
 
     public function __construct(
-        private readonly Mexc $mexc,
-        private readonly CoinEx $coinex,
-        private readonly Kraken $kraken,
+        private readonly ExchangeRegistry $registry,
         private readonly DetectOpportunity $detector,
         private readonly ExecuteArbitrage $executeArbitrage,
     ) {
@@ -104,10 +100,14 @@ class FindArbitrageCommand extends Command
             $this->usdtUsdRate = $usdtUsdRate;
             [$quoteBalances, $baseBalances] = $this->resolveBalances($pretend, $books['usdtUsdRate']);
 
+            $mexc = $this->registry->get('Mexc');
+            $coinex = $this->registry->get('CoinEx');
+            $kraken = $this->registry->get('Kraken');
+
             $pairs = [
-                [$this->mexc, $books['mexc'], $this->coinex, $books['coinex']],
-                [$this->mexc, $books['mexc'], $this->kraken, $books['krakenNormalized']],
-                [$this->coinex, $books['coinex'], $this->kraken, $books['krakenNormalized']],
+                [$mexc, $books['mexc'], $coinex, $books['coinex']],
+                [$mexc, $books['mexc'], $kraken, $books['krakenNormalized']],
+                [$coinex, $books['coinex'], $kraken, $books['krakenNormalized']],
             ];
 
             /** @var OpportunityData|null $best */
@@ -391,10 +391,10 @@ class FindArbitrageCommand extends Command
      */
     private function fetchAllBooks(): array
     {
-        $mexcBook = $this->mexc->getOrderBook('pep_usdt');
-        $coinexBook = $this->coinex->getOrderBook('pep_usdt');
-        $krakenPepBookRaw = $this->kraken->getOrderBook('pep_usd');
-        $krakenUsdtBook = $this->kraken->getOrderBook('usdt_usd');
+        $mexcBook = $this->registry->get('Mexc')->getOrderBook('pep_usdt');
+        $coinexBook = $this->registry->get('CoinEx')->getOrderBook('pep_usdt');
+        $krakenPepBookRaw = $this->registry->get('Kraken')->getOrderBook('pep_usd');
+        $krakenUsdtBook = $this->registry->get('Kraken')->getOrderBook('usdt_usd');
 
         $usdtUsdRate = $this->extractUsdtUsdRate($krakenUsdtBook);
         $krakenNormalized = DetectOpportunity::normalizeToUsdt($krakenPepBookRaw, $usdtUsdRate);
@@ -425,7 +425,7 @@ class FindArbitrageCommand extends Command
         $usdtUsdRate = 1.0;
 
         if ($needsKraken) {
-            $krakenUsdtBook = $this->kraken->getOrderBook('usdt_usd');
+            $krakenUsdtBook = $this->registry->get('Kraken')->getOrderBook('usdt_usd');
             $usdtUsdRate = $this->extractUsdtUsdRate($krakenUsdtBook);
         }
 
@@ -480,11 +480,11 @@ class FindArbitrageCommand extends Command
             return [[], []];
         }
 
-        $balances = [
-            $this->mexc->getName() => $this->mexc->getBalances(),
-            $this->coinex->getName() => $this->coinex->getBalances(),
-            $this->kraken->getName() => $this->kraken->getBalances(),
-        ];
+        $balances = [];
+
+        foreach ($this->registry->all() as $exchange) {
+            $balances[$exchange->getName()] = $exchange->getBalances();
+        }
 
         $quoteBalances = [
             'Mexc' => $balances['Mexc']['USDT']['available'] ?? 0.0,
@@ -501,16 +501,8 @@ class FindArbitrageCommand extends Command
         return [$quoteBalances, $baseBalances];
     }
 
-    /**
-     * Resolve an exchange instance by its name.
-     */
-    private function exchangeByName(string $name): \App\Exchanges\Contracts\ExchangeInterface
+    private function exchangeByName(string $name): ExchangeInterface
     {
-        return match ($name) {
-            'Mexc' => $this->mexc,
-            'CoinEx' => $this->coinex,
-            'Kraken' => $this->kraken,
-            default => throw new RuntimeException("Unknown exchange: {$name}"),
-        };
+        return $this->registry->get($name);
     }
 }
