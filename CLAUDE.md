@@ -282,11 +282,16 @@ app/
     Kraken.php
   Arbitrage/
     DetectOpportunity.php             # Core calculation: compares order books
+    ExecuteArbitrage.php              # Places buy + sell orders; Log::critical on partial failure
+    ValueObjects/
+      OpportunityData.php             # Immutable opportunity value object
+      ExecutionResult.php             # Immutable execution outcome (orderId, failedSide, error)
   Console/Commands/                   # Artisan commands (monitoring, cleanup)
   Livewire/                           # UI components
   Models/                             # Eloquent models
 config/
   exchanges.php                       # API keys, base URLs, fee rates
+  arbitrage.php                       # ARBITRAGE_ORDER_TYPE ('limit' | 'market')
 ```
 
 ### Key Concepts
@@ -313,11 +318,12 @@ All exchanges implement `ExchangeInterface`. `BaseExchange` provides shared logi
 Required exchange methods:
 - `getOrderBook(string $symbol): array` — returns normalized bids/asks
 - `getBalances(): array` — returns `['CURRENCY' => ['available' => float]]`
+- `placeOrder(string $symbol, string $side, float $amount, string $type, ?float $price): array` — places a spot order; returns `['orderId' => string]`
 - `withdraw(string $currency, float $amount, string $toExchange, string $network): array`
 
 ### Models
 
-- `ArbitrageOpportunity` — stores detected opportunities (exchange pair, profit, amounts, timestamps)
+- `ArbitrageOpportunity` — stores detected opportunities; also tracks execution state via `execution_status`, `tx_buy_id`, `tx_sell_id`, and related columns populated by `recordExecution()`
 
 ### Configuration
 
@@ -333,6 +339,5 @@ Exchange credentials and fee rates live in `config/exchanges.php`, loaded from `
 ## What NOT to Do
 
 - Do not hardcode API keys — always use `config('exchanges.mexc.api_key')`
-- Do not add transfer/withdrawal features until arbitrage detection is stable
 - Do not build a settings UI before the core detection loop works
 - Do not add email notifications in the first iteration

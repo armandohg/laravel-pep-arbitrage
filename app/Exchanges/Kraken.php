@@ -10,6 +10,7 @@ class Kraken extends BaseExchange
     /** @var array<string, string> */
     private const SYMBOL_MAP = [
         'pep_usd' => 'PEPUSD',
+        'pep_usdt' => 'PEPUSD',
         'usdt_usd' => 'USDTUSD',
     ];
 
@@ -135,6 +136,30 @@ class Kraken extends BaseExchange
     }
 
     /**
+     * @return array{orderId: string}
+     */
+    public function placeOrder(string $symbol, string $side, float $amount, string $type, ?float $price = null): array
+    {
+        $pair = self::SYMBOL_MAP[$symbol] ?? strtoupper(str_replace('_', '', $symbol));
+        $url = config('exchanges.kraken.base_url').'/private/AddOrder';
+
+        $params = [
+            'pair' => $pair,
+            'type' => strtolower($side),
+            'ordertype' => strtolower($type),
+            'volume' => $amount,
+        ];
+
+        if ($price !== null && strtolower($type) === 'limit') {
+            $params['price'] = $price;
+        }
+
+        $response = $this->requestPrivate($url, $params);
+
+        return ['orderId' => (string) ($response['result']['txids'][0] ?? '')];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function buyUsdt(float $usdAmount): array
@@ -186,7 +211,7 @@ class Kraken extends BaseExchange
 
         for ($attempt = 1; $attempt <= 5; $attempt++) {
             try {
-                $response = Http::withHeaders([
+                $response = Http::asForm()->withHeaders([
                     'API-Key' => $this->apiKey,
                     'API-Sign' => $signature,
                 ])->post($url, $postData);

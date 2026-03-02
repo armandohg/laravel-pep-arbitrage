@@ -8,6 +8,11 @@
         </div>
     </div>
 
+    {{-- Exchange Balances --}}
+    <div class="mb-8">
+        <livewire:exchange-balances />
+    </div>
+
     {{-- Stats --}}
     <div class="mb-6 grid gap-4 sm:grid-cols-3">
         <flux:card>

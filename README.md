@@ -1,6 +1,6 @@
 # PEP Arbitrage
 
-A real-time arbitrage monitor for **$PEP (Pepecoin)** built with Laravel 12, Livewire 4, and Flux UI. It compares order books across MEXC, CoinEx, and Kraken, persists detected opportunities to a database, surfaces them in a live dashboard that auto-refreshes every 5 seconds, and includes an automated rebalancing system that distributes funds across exchanges using DB-backed transfer routes.
+A real-time arbitrage monitor for **$PEP (Pepecoin)** built with Laravel 12, Livewire 4, and Flux UI. It compares order books across MEXC, CoinEx, and Kraken, persists detected opportunities to a database, surfaces them in a live dashboard that auto-refreshes every 5 seconds, executes real orders when confirmed, and includes an automated rebalancing system that distributes funds across exchanges using DB-backed transfer routes.
 
 ---
 
@@ -12,15 +12,24 @@ Exchange APIs (MEXC · CoinEx · Kraken)
          ▼
   arbitrage:find                ← Artisan command (polling loop)
          │
-         ├── getOrderBook()        ← fetches normalized bids/asks
-         ├── getBalances()         ← fetches available USDT / PEP per exchange
-         │                            (skipped in --pretend mode)
-         ├── DetectOpportunity
-         │        ├── normalizeToUsdt()       ← converts Kraken USD prices to USDT
-         │        ├── getMaxBuyableAsks()     ← level-by-level buy capacity from quote balance
-         │        ├── getMaxSellableBids()    ← level-by-level sell capacity from PEP balance
-         │        └── buyLevels × sellLevels  ← tries all depth combinations, picks best profit
-         └── ArbitrageOpportunity::fromOpportunityData()  ← persists to DB
+         ├── Phase 1 — DISCOVERY
+         │        ├── getOrderBook()        ← fetches normalized bids/asks
+         │        ├── getBalances()         ← fetches available USDT / PEP per exchange
+         │        │                            (skipped in --pretend mode)
+         │        └── DetectOpportunity
+         │                 ├── normalizeToUsdt()       ← converts Kraken USD prices to USDT
+         │                 ├── getMaxBuyableAsks()     ← level-by-level buy capacity from quote balance
+         │                 ├── getMaxSellableBids()    ← level-by-level sell capacity from PEP balance
+         │                 └── buyLevels × sellLevels  ← tries all depth combinations, picks best profit
+         │
+         ├── Phase 2 — SUSTAIN (re-checks the winning pair every N seconds)
+         │        └── Confirms profit is stable within ±tolerance% for the sustain window
+         │
+         └── Phase 3 — EXECUTION  (only with --execute, skipped if --pretend)
+                  └── ExecuteArbitrage
+                           ├── placeOrder(buy)   ← limit or market, exchange-specific API
+                           ├── placeOrder(sell)  ← if buy OK; Log::critical if sell fails
+                           └── ArbitrageOpportunity::recordExecution()  ← updates DB record
                   │
                   ▼
           arbitrage_opportunities  (MySQL / SQLite)
@@ -245,6 +254,9 @@ COINEX_API_SECRET=your_coinex_api_secret
 # Kraken  — https://www.kraken.com/u/security/api
 KRAKEN_API_KEY=your_kraken_api_key
 KRAKEN_API_SECRET=your_kraken_api_secret
+
+# Order execution (optional)
+ARBITRAGE_ORDER_TYPE=limit   # 'limit' (default) or 'market'
 ```
 
 For rebalancing, Kraken's deposit addresses and withdrawal key names (Kraken uses named keys, not raw addresses) must be set in `config/exchanges.php` under `kraken.deposit_addresses` and `kraken.withdraw_keys`. These are seeded into the DB automatically by `exchanges:sync-networks`.
@@ -265,26 +277,32 @@ php artisan arbitrage:find
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--interval=N` | `5` | Seconds to sleep between polls |
+| `--interval=N` | `5` | Seconds to sleep between discovery polls |
 | `--min-profit=N` | `0.003` | Minimum profit ratio to persist (e.g. `0.003` = 0.3 %) |
-| `--once` | — | Run a single poll and exit (useful for testing / cron) |
-| `--pretend` | — | Ignore balances — detects the maximum theoretical opportunity |
+| `--min-amount=N` | `0` | Minimum trade size in USDT to consider (e.g. `5` = $5 minimum) |
+| `--sustain=N` | `10` | Seconds the winning pair must hold steady before executing |
+| `--sustain-interval=N` | `2` | Seconds between checks during the sustain phase |
+| `--stability=N` | `0.5` | Max allowed profit drift during sustain (e.g. `0.5` = ±0.5 %) |
+| `--once` | — | Run a single discovery poll and exit (useful for testing / cron) |
+| `--pretend` | — | Ignore balances — detects the maximum theoretical opportunity, never places orders |
+| `--execute` | — | Place real orders when an opportunity is confirmed after the sustain phase |
 
-### Normal mode vs pretend mode
+### Execution modes
 
-| | Normal | `--pretend` |
-|-|--------|-------------|
-| Calls `getBalances()` | ✅ yes | ❌ no |
-| Volume capped by funds | ✅ yes | ❌ no |
-| Results are executable | ✅ yes | simulation only |
-| API keys needed | ✅ yes | ❌ no |
+| | `--pretend` | Default (no flags) | `--execute` |
+|-|-------------|-------------------|-------------|
+| Calls `getBalances()` | ❌ no | ✅ yes | ✅ yes |
+| Volume capped by funds | ❌ no | ✅ yes | ✅ yes |
+| Sustain phase | ✅ yes | ✅ yes | ✅ yes |
+| Places real orders | ❌ never | ❌ no (warns to use `--execute`) | ✅ yes |
+| API keys needed | ❌ no | ✅ yes | ✅ yes |
 
-Use `--pretend` to explore opportunities without configured API keys, or to see the theoretical maximum that the order books support regardless of your current funds.
+Use `--pretend` to explore opportunities without configured API keys. Omit `--execute` to monitor and record opportunities without acting on them.
 
 ### Examples
 
 ```bash
-# Default: balance-aware, polls every 5 seconds
+# Default: balance-aware, polls every 5s, records opportunities but does not trade
 php artisan arbitrage:find
 
 # Poll every 10 seconds, only record opportunities above 1 %
@@ -298,6 +316,12 @@ php artisan arbitrage:find --pretend
 
 # Combine: single simulation poll with low threshold
 php artisan arbitrage:find --pretend --once --min-profit=0.001
+
+# Live trading — execute orders after sustain confirmation
+php artisan arbitrage:find --execute
+
+# Live trading with custom sustain window and min trade size
+php artisan arbitrage:find --execute --sustain=15 --min-amount=10
 ```
 
 ### Output
@@ -355,6 +379,7 @@ The dashboard requires a registered account. Register at `/register`.
 
 ### Dashboard features
 
+- **Exchange balances** — cards showing all available balances per exchange (PEP, USDT, USD, etc.) plus a total summary card across all three exchanges; refreshes every 30 seconds or on demand
 - **Live stats** — total opportunities detected, today's count, best profit ratio seen
 - **Auto-refresh** — the table polls the server every 5 seconds via Livewire
 - **Profit-level filter** — click any level button (All / Low / Medium / High / VeryHigh / Extreme) to narrow the table
@@ -396,22 +421,25 @@ vendor/bin/pint
 app/
   Arbitrage/
     DetectOpportunity.php              # Core profit calculation (walks order books)
+    ExecuteArbitrage.php               # Places buy + sell orders; Log::critical on partial failure
     ValueObjects/
-      OpportunityData.php              # Immutable result value object
+      OpportunityData.php              # Immutable opportunity value object
+      ExecutionResult.php              # Immutable execution outcome (orderId, failedSide, error)
   Console/Commands/
-    FindArbitrageCommand.php           # arbitrage:find polling loop
+    FindArbitrageCommand.php           # arbitrage:find — discovery → sustain → execute loop
     ExchangesRebalanceCommand.php      # exchanges:rebalance — plan and execute transfers
     ExchangesSyncNetworksCommand.php   # exchanges:sync-networks — fetch networks/addresses, build routes
   Exchanges/
-    Contracts/ExchangeInterface.php
+    Contracts/ExchangeInterface.php    # getOrderBook, getBalances, placeOrder, withdraw, getTxFee
     BaseExchange.php                   # HTTP client, retry with backoff
     Mexc.php
     CoinEx.php
     Kraken.php
   Livewire/
     ArbitrageDashboard.php             # Dashboard component (filter + stats + table)
+    ExchangeBalances.php               # Balance cards component (per-exchange + totals, polls 30s)
   Models/
-    ArbitrageOpportunity.php           # Eloquent model + fromOpportunityData()
+    ArbitrageOpportunity.php           # Eloquent model + fromOpportunityData() + recordExecution()
     ExchangeNetwork.php                # Withdrawal networks per exchange/asset with fees
     ExchangeWallet.php                 # Deposit addresses per exchange/asset/network
     TransferRoute.php                  # Active transfer routes (from→to, FK to wallet)
@@ -429,9 +457,11 @@ database/
     TransferRouteFactory.php
   migrations/
     *_create_arbitrage_opportunities_table.php
+    *_add_execution_columns_to_arbitrage_opportunities_table.php
     *_create_exchange_networks_table.php
     *_create_exchange_wallets_table.php
     *_create_transfer_routes_table.php
 config/
   exchanges.php                        # API credentials, base URLs, Kraken withdraw keys
+  arbitrage.php                        # ARBITRAGE_ORDER_TYPE ('limit' or 'market')
 ```
