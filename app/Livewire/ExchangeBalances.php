@@ -18,7 +18,7 @@ class ExchangeBalances extends Component
     public function mexcBalances(): array|string
     {
         try {
-            return app(Mexc::class)->getBalances();
+            return $this->sortByAvailable(app(Mexc::class)->getBalances());
         } catch (Throwable $e) {
             return $e->getMessage();
         }
@@ -31,7 +31,7 @@ class ExchangeBalances extends Component
     public function coinexBalances(): array|string
     {
         try {
-            return app(CoinEx::class)->getBalances();
+            return $this->sortByAvailable(app(CoinEx::class)->getBalances());
         } catch (Throwable $e) {
             return $e->getMessage();
         }
@@ -44,10 +44,21 @@ class ExchangeBalances extends Component
     public function krakenBalances(): array|string
     {
         try {
-            return app(Kraken::class)->getBalances();
+            return $this->sortByAvailable(app(Kraken::class)->getBalances());
         } catch (Throwable $e) {
             return $e->getMessage();
         }
+    }
+
+    /**
+     * @param  array<string, array{available: float}>  $balances
+     * @return array<string, array{available: float}>
+     */
+    private function sortByAvailable(array $balances): array
+    {
+        uasort($balances, fn (array $a, array $b) => $b['available'] <=> $a['available']);
+
+        return $balances;
     }
 
     /**
