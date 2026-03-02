@@ -26,6 +26,11 @@
         </flux:card>
     @endif
 
+    @php
+        $exchangeCount = collect($this->balances)->filter(fn ($b) => ! is_string($b))->count();
+        $ideal = $exchangeCount > 0 ? 100 / $exchangeCount : 100;
+    @endphp
+
     <div class="grid gap-4 sm:grid-cols-3">
         @foreach ($this->balances as $name => $balances)
             <flux:card>
@@ -38,13 +43,21 @@
                 @else
                     <div class="space-y-2">
                         @foreach ($balances as $currency => $balance)
+                            @php
+                                $pct = $this->exchangePercentages[$name][$currency] ?? 0;
+                                $ratio = $ideal > 0 ? $pct / $ideal : 0;
+                                $pctColor = $ratio >= 0.75 ? 'text-green-500' : ($ratio >= 0.5 ? 'text-yellow-400' : 'text-red-500');
+                            @endphp
                             <div class="flex items-baseline justify-between">
                                 <flux:text class="text-sm text-zinc-500 dark:text-zinc-400">{{ $currency }}</flux:text>
-                                <span class="text-lg font-semibold tabular-nums">
-                                    {{ $currency === 'PEP'
-                                        ? number_format($balance['available'], 0)
-                                        : number_format($balance['available'], 4) }}
-                                </span>
+                                <div class="flex items-baseline gap-2">
+                                    <span class="text-xs font-medium tabular-nums {{ $pctColor }}">{{ $pct }}%</span>
+                                    <span class="text-lg font-semibold tabular-nums">
+                                        {{ $currency === 'PEP'
+                                            ? number_format($balance['available'], 0)
+                                            : number_format($balance['available'], 4) }}
+                                    </span>
+                                </div>
                             </div>
                         @endforeach
                     </div>

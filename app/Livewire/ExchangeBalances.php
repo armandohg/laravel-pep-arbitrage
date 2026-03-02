@@ -9,8 +9,6 @@ use Throwable;
 
 class ExchangeBalances extends Component
 {
-    public function __construct(private readonly ExchangeRegistry $registry) {}
-
     /**
      * @return array<string, array<string, array{available: float}>|string>
      */
@@ -19,7 +17,7 @@ class ExchangeBalances extends Component
     {
         $result = [];
 
-        foreach ($this->registry->all() as $exchange) {
+        foreach (app(ExchangeRegistry::class)->all() as $exchange) {
             try {
                 $result[$exchange->getName()] = $this->sortByAvailable($exchange->getBalances());
             } catch (Throwable $e) {
@@ -51,6 +49,30 @@ class ExchangeBalances extends Component
         arsort($totals);
 
         return $totals;
+    }
+
+    /**
+     * @return array<string, array<string, float>>
+     */
+    #[Computed]
+    public function exchangePercentages(): array
+    {
+        $percentages = [];
+
+        foreach ($this->balances as $exchangeName => $balances) {
+            if (is_string($balances)) {
+                continue;
+            }
+
+            foreach ($balances as $currency => $balance) {
+                $total = $this->totalBalances[$currency] ?? 0;
+                $percentages[$exchangeName][$currency] = $total > 0
+                    ? round(($balance['available'] / $total) * 100, 1)
+                    : 0;
+            }
+        }
+
+        return $percentages;
     }
 
     /**
