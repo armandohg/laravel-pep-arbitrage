@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Arbitrage\DetectOpportunity;
+use App\Arbitrage\ExecuteArbitrage;
 use App\Arbitrage\ValueObjects\OpportunityData;
 use App\Exchanges\CoinEx;
 use App\Exchanges\Kraken;
@@ -23,15 +24,19 @@ class FindArbitrageCommand extends Command
         {--stability=0.5 : Profit % drift tolerance during sustain (e.g. 0.5 = ±0.5%)}
         {--once : Run a single discovery poll and exit}
         {--pretend : Ignore balances and detect the maximum theoretical opportunity (simulation only)}
+        {--execute : Execute real orders when opportunity is confirmed}
         {--min-amount=0 : Minimum trade amount in USD/USDT to consider an opportunity (e.g. 5 = $5 minimum)}';
 
     protected $description = 'Monitor PEP order books across exchanges and detect arbitrage opportunities';
+
+    private float $usdtUsdRate = 1.0;
 
     public function __construct(
         private readonly Mexc $mexc,
         private readonly CoinEx $coinex,
         private readonly Kraken $kraken,
         private readonly DetectOpportunity $detector,
+        private readonly ExecuteArbitrage $executeArbitrage,
     ) {
         parent::__construct();
     }
@@ -96,6 +101,7 @@ class FindArbitrageCommand extends Command
 
         try {
             [$books, $usdtUsdRate] = $this->fetchAllBooks();
+            $this->usdtUsdRate = $usdtUsdRate;
             [$quoteBalances, $baseBalances] = $this->resolveBalances($pretend, $books['usdtUsdRate']);
 
             $pairs = [
@@ -247,7 +253,7 @@ class FindArbitrageCommand extends Command
     }
 
     /**
-     * Execute the confirmed opportunity (placeholder — real order logic goes here).
+     * Execute the confirmed opportunity.
      */
     protected function executeBestOpportunity(OpportunityData $opportunity, bool $pretend): void
     {
@@ -262,8 +268,43 @@ class FindArbitrageCommand extends Command
 
         if ($pretend) {
             $this->warn('[pretend] Would execute trade — skipping real orders.');
+
+            return;
+        }
+
+        if (! $this->option('execute')) {
+            $this->warn('Use --execute to place real orders.');
+
+            return;
+        }
+
+        $model = ArbitrageOpportunity::where('buy_exchange', $opportunity->buyExchange)
+            ->where('sell_exchange', $opportunity->sellExchange)
+            ->whereNull('execution_status')
+            ->latest()
+            ->first();
+
+        $result = $this->executeArbitrage->execute($opportunity, $this->usdtUsdRate);
+
+        $buyPrice = ! empty($opportunity->buyLevels) ? max(array_column($opportunity->buyLevels, 'price')) : $opportunity->avgBuyPrice;
+        $sellPrice = ! empty($opportunity->sellLevels) ? min(array_column($opportunity->sellLevels, 'price')) : $opportunity->avgSellPrice;
+
+        $model?->recordExecution($result, $opportunity->amount, $buyPrice, $sellPrice);
+
+        if ($result->success) {
+            $this->info(sprintf(
+                '[%s] Orders placed — buy: %s | sell: %s',
+                now()->format('H:i:s'),
+                $result->buyOrderId,
+                $result->sellOrderId,
+            ));
         } else {
-            $this->warn('Execution not yet implemented.');
+            $this->error(sprintf(
+                '[%s] Execution failed (side: %s): %s',
+                now()->format('H:i:s'),
+                $result->failedSide ?? 'unknown',
+                $result->error,
+            ));
         }
     }
 

@@ -1,5 +1,6 @@
 <?php
 
+use App\Arbitrage\ExecuteArbitrage;
 use App\Exchanges\CoinEx;
 use App\Exchanges\Kraken;
 use App\Exchanges\Mexc;
@@ -96,7 +97,7 @@ it('logs a warning and continues when a poll throws', function () use ($emptyBoo
         ->shouldReceive('getOrderBook')->andReturn($emptyBook);
 
     $this->artisan('arbitrage:find', ['--once' => true, '--pretend' => true])
-        ->expectsOutputToContain('Poll error: API timeout')
+        ->expectsOutputToContain('Discovery error: API timeout')
         ->assertSuccessful();
 
     expect(ArbitrageOpportunity::count())->toBe(0);
@@ -263,4 +264,83 @@ it('pretend mode detects the full order-book volume without calling getBalances'
     expect(ArbitrageOpportunity::count())->toBe(1);
     // Full 1,000,000 PEP filled — not constrained by any balance
     expect(ArbitrageOpportunity::first()->amount)->toBeCloseTo(1_000_000.0, 0);
+});
+
+// ---------------------------------------------------------------------------
+// --execute flag
+// ---------------------------------------------------------------------------
+
+it('warns and skips orders when --pretend and --execute are both set', function () use ($krakenUsdtBook, $emptyBook) {
+    $mexcBook = [
+        'bids' => [['price' => 0.0015, 'amount' => 1_000_000.0]],
+        'asks' => [['price' => 0.001, 'amount' => 1_000_000.0]],
+    ];
+
+    $coinexBook = [
+        'bids' => [['price' => 0.002, 'amount' => 1_000_000.0]],
+        'asks' => [['price' => 0.003, 'amount' => 1_000_000.0]],
+    ];
+
+    $this->mock(Mexc::class)
+        ->shouldReceive('getName')->andReturn('Mexc')
+        ->shouldReceive('getTxFee')->andReturn(0.0005)
+        ->shouldReceive('getOrderBook')->with('pep_usdt')->andReturn($mexcBook);
+
+    $this->mock(CoinEx::class)
+        ->shouldReceive('getName')->andReturn('CoinEx')
+        ->shouldReceive('getTxFee')->andReturn(0.002)
+        ->shouldReceive('getOrderBook')->with('pep_usdt')->andReturn($coinexBook);
+
+    $this->mock(Kraken::class)
+        ->shouldReceive('getName')->andReturn('Kraken')
+        ->shouldReceive('getTxFee')->andReturn(0.0026)
+        ->shouldReceive('getOrderBook')->with('pep_usd')->andReturn($emptyBook)
+        ->shouldReceive('getOrderBook')->with('usdt_usd')->andReturn($krakenUsdtBook);
+
+    $this->mock(ExecuteArbitrage::class)
+        ->shouldNotReceive('execute');
+
+    $this->artisan('arbitrage:find', ['--once' => true, '--pretend' => true, '--execute' => true, '--sustain' => 0])
+        ->expectsOutputToContain('[pretend] Would execute trade')
+        ->assertSuccessful();
+});
+
+it('warns to use --execute when opportunity is confirmed without it', function () use ($krakenUsdtBook, $emptyBook) {
+    $mexcBook = [
+        'bids' => [['price' => 0.0015, 'amount' => 1_000_000.0]],
+        'asks' => [['price' => 0.001, 'amount' => 1_000_000.0]],
+    ];
+
+    $coinexBook = [
+        'bids' => [['price' => 0.002, 'amount' => 1_000_000.0]],
+        'asks' => [['price' => 0.003, 'amount' => 1_000_000.0]],
+    ];
+
+    $zeroBalances = ['USDT' => ['available' => 100.0], 'PEP' => ['available' => 200_000.0]];
+
+    $this->mock(Mexc::class)
+        ->shouldReceive('getName')->andReturn('Mexc')
+        ->shouldReceive('getTxFee')->andReturn(0.0005)
+        ->shouldReceive('getOrderBook')->with('pep_usdt')->andReturn($mexcBook)
+        ->shouldReceive('getBalances')->andReturn($zeroBalances);
+
+    $this->mock(CoinEx::class)
+        ->shouldReceive('getName')->andReturn('CoinEx')
+        ->shouldReceive('getTxFee')->andReturn(0.002)
+        ->shouldReceive('getOrderBook')->with('pep_usdt')->andReturn($coinexBook)
+        ->shouldReceive('getBalances')->andReturn($zeroBalances);
+
+    $this->mock(Kraken::class)
+        ->shouldReceive('getName')->andReturn('Kraken')
+        ->shouldReceive('getTxFee')->andReturn(0.0026)
+        ->shouldReceive('getOrderBook')->with('pep_usd')->andReturn($emptyBook)
+        ->shouldReceive('getOrderBook')->with('usdt_usd')->andReturn($krakenUsdtBook)
+        ->shouldReceive('getBalances')->andReturn([]);
+
+    $this->mock(ExecuteArbitrage::class)
+        ->shouldNotReceive('execute');
+
+    $this->artisan('arbitrage:find', ['--once' => true, '--sustain' => 0])
+        ->expectsOutputToContain('--execute')
+        ->assertSuccessful();
 });

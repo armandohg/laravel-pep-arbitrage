@@ -285,7 +285,7 @@ php artisan arbitrage:find
 | `--stability=N` | `0.5` | Max allowed profit drift during sustain (e.g. `0.5` = ±0.5 %) |
 | `--once` | — | Run a single discovery poll and exit (useful for testing / cron) |
 | `--pretend` | — | Ignore balances — detects the maximum theoretical opportunity, never places orders |
-| `--execute` | — | Place real orders when an opportunity is confirmed after the sustain phase |
+| `--execute` | — | Place real buy + sell orders when an opportunity is confirmed after the sustain phase |
 
 ### Execution modes
 

@@ -130,6 +130,30 @@ class CoinEx extends BaseExchange
     }
 
     /**
+     * @return array{orderId: string}
+     */
+    public function placeOrder(string $symbol, string $side, float $amount, string $type, ?float $price = null): array
+    {
+        $market = self::SYMBOL_MAP[$symbol] ?? strtoupper(str_replace('_', '', $symbol));
+        $url = config('exchanges.coinex.base_url').'/v2/spot/order';
+
+        $params = [
+            'market' => $market,
+            'side' => strtolower($side),
+            'type' => strtolower($type),
+            'amount' => $amount,
+        ];
+
+        if ($price !== null && strtolower($type) === 'limit') {
+            $params['price'] = $price;
+        }
+
+        $response = $this->request('POST', $url, $params, true);
+
+        return ['orderId' => (string) ($response['data']['order_id'] ?? '')];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function withdraw(string $currency, float $amount, string $address, string $network): array

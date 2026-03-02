@@ -24,6 +24,13 @@ interface ExchangeInterface
     public function getTxFee(): float;
 
     /**
+     * Place a spot order on this exchange.
+     *
+     * @return array{orderId: string}
+     */
+    public function placeOrder(string $symbol, string $side, float $amount, string $type, ?float $price = null): array;
+
+    /**
      * Withdraw currency to a destination address or key.
      * For Kraken, $address is a pre-configured withdrawal key name (set in Kraken UI).
      *

@@ -144,6 +144,31 @@ class Mexc extends BaseExchange
     }
 
     /**
+     * @return array{orderId: string}
+     */
+    public function placeOrder(string $symbol, string $side, float $amount, string $type, ?float $price = null): array
+    {
+        $mexcSymbol = self::SYMBOL_MAP[$symbol] ?? strtoupper(str_replace('_', '', $symbol));
+        $url = config('exchanges.mexc.base_url').'/api/v3/order';
+
+        $params = [
+            'symbol' => $mexcSymbol,
+            'side' => strtoupper($side),
+            'type' => strtoupper($type),
+            'quantity' => $amount,
+        ];
+
+        if ($price !== null && strtoupper($type) === 'LIMIT') {
+            $params['price'] = $price;
+            $params['timeInForce'] = 'GTC';
+        }
+
+        $response = $this->request('POST', $url, $params, true);
+
+        return ['orderId' => (string) ($response['orderId'] ?? '')];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function withdraw(string $currency, float $amount, string $address, string $network): array
