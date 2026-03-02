@@ -13,6 +13,11 @@
         <livewire:exchange-balances />
     </div>
 
+    {{-- Balance History Charts --}}
+    <div class="mb-8">
+        <livewire:balance-charts />
+    </div>
+
     {{-- Stats --}}
     <div class="mb-6 grid gap-4 sm:grid-cols-3">
         <flux:card>
