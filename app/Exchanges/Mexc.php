@@ -95,13 +95,19 @@ class Mexc extends BaseExchange
      */
     protected function request(string $method, string $url, array $data = [], bool $signed = false): array
     {
-        if ($signed && strtoupper($method) === 'GET') {
+        if ($signed) {
             $timestamp = (int) (microtime(true) * 1000);
             $data['timestamp'] = $timestamp;
             $data['recvWindow'] = 60000;
 
             $queryString = http_build_query($data);
             $data['signature'] = hash_hmac('sha256', $queryString, $this->apiSecret);
+
+            // MEXC requires all signed params (including signature) in the URL query string for POST requests.
+            if (strtoupper($method) === 'POST') {
+                $url .= '?'.http_build_query($data);
+                $data = [];
+            }
         }
 
         return parent::request($method, $url, $data, $signed);
