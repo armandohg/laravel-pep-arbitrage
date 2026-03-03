@@ -139,13 +139,14 @@ class CoinEx extends BaseExchange
 
         $params = [
             'market' => $market,
+            'market_type' => 'spot',
             'side' => strtolower($side),
             'type' => strtolower($type),
-            'amount' => $amount,
+            'amount' => (string) $amount,
         ];
 
         if ($price !== null && strtolower($type) === 'limit') {
-            $params['price'] = $price;
+            $params['price'] = (string) $price;
         }
 
         $response = $this->request('POST', $url, $params, true);
