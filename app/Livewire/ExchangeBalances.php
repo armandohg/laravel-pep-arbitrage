@@ -3,6 +3,7 @@
 namespace App\Livewire;
 
 use App\Exchanges\ExchangeRegistry;
+use Illuminate\Support\Facades\Cache;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
 use Throwable;
@@ -19,7 +20,9 @@ class ExchangeBalances extends Component
 
         foreach (app(ExchangeRegistry::class)->all() as $exchange) {
             try {
-                $result[$exchange->getName()] = $this->sortByAvailable($exchange->getBalances());
+                $result[$exchange->getName()] = $this->sortByAvailable(
+                    $this->mergeUsdIntoUsdt($exchange->getBalances())
+                );
             } catch (Throwable $e) {
                 $result[$exchange->getName()] = $e->getMessage();
             }
@@ -76,6 +79,24 @@ class ExchangeBalances extends Component
     }
 
     /**
+     * Merge USD balance into USDT so both fiat and stablecoin appear as a single currency.
+     *
+     * @param  array<string, array{available: float}>  $balances
+     * @return array<string, array{available: float}>
+     */
+    private function mergeUsdIntoUsdt(array $balances): array
+    {
+        if (! isset($balances['USD'])) {
+            return $balances;
+        }
+
+        $balances['USDT']['available'] = ($balances['USDT']['available'] ?? 0.0) + $balances['USD']['available'];
+        unset($balances['USD']);
+
+        return $balances;
+    }
+
+    /**
      * @param  array<string, array{available: float}>  $balances
      * @return array<string, array{available: float}>
      */
@@ -84,6 +105,15 @@ class ExchangeBalances extends Component
         uasort($balances, fn (array $a, array $b) => $b['available'] <=> $a['available']);
 
         return $balances;
+    }
+
+    public function forceRefresh(): void
+    {
+        foreach (app(ExchangeRegistry::class)->all() as $exchange) {
+            Cache::forget('exchange_balances_'.strtolower($exchange->getName()));
+        }
+
+        unset($this->balances, $this->totalBalances, $this->exchangePercentages);
     }
 
     public function render(): \Illuminate\View\View

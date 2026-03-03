@@ -1,7 +1,7 @@
 <div wire:poll.30s>
     <div class="flex items-center justify-between mb-4">
         <flux:heading size="lg">Exchange Balances</flux:heading>
-        <flux:button wire:click="$refresh" size="sm" variant="ghost" icon="arrow-path" wire:loading.attr="disabled">
+        <flux:button wire:click="forceRefresh" size="sm" variant="ghost" icon="arrow-path" wire:loading.attr="disabled">
             <span wire:loading.remove>Refresh</span>
             <span wire:loading>Refreshing…</span>
         </flux:button>
