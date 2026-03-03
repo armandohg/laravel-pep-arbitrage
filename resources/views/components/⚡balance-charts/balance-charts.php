@@ -22,14 +22,25 @@ new class extends Component
             ->orderBy('snapped_at')
             ->get(['currency', 'total_available', 'snapped_at']);
 
+        // Index by [currency][snapped_at] for easy USD→USDT merging.
+        $byTime = [];
+
+        foreach ($snapshots as $record) {
+            $currency = $record->currency === 'USD' ? 'USDT' : $record->currency;
+            $key = $record->snapped_at->toDateTimeString();
+            $byTime[$currency][$key] = ($byTime[$currency][$key] ?? 0.0) + $record->total_available;
+        }
+
         $charts = [];
 
-        foreach ($snapshots->groupBy('currency') as $currency => $records) {
+        foreach ($byTime as $currency => $entries) {
             $decimals = $currency === 'PEP' ? 0 : 4;
-
             $charts[$currency] = [
-                'labels' => $records->map(fn ($r) => $r->snapped_at->format('M j H:i'))->values()->all(),
-                'data' => $records->map(fn ($r) => round($r->total_available, $decimals))->values()->all(),
+                'labels' => array_map(
+                    fn ($ts) => Carbon::parse($ts)->format('M j H:i'),
+                    array_keys($entries),
+                ),
+                'data' => array_map(fn ($v) => round($v, $decimals), array_values($entries)),
             ];
         }
 
