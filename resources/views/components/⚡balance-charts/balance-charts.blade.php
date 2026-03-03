@@ -72,7 +72,18 @@
                                         options: {
                                             responsive: true,
                                             animation: false,
-                                            plugins: { legend: { display: false } },
+                                            interaction: {
+                                                mode: 'index',
+                                                intersect: false,
+                                            },
+                                            plugins: {
+                                                legend: { display: false },
+                                                tooltip: {
+                                                    callbacks: {
+                                                        label: (ctx) => ` ${ctx.parsed.y.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })}`,
+                                                    },
+                                                },
+                                            },
                                             scales: {
                                                 x: {
                                                     ticks: { maxTicksLimit: 7, maxRotation: 0, font: { size: 10 } },
