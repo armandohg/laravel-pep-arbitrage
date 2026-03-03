@@ -18,6 +18,11 @@
         <livewire:balance-charts />
     </div>
 
+    {{-- Arbitrage Executions --}}
+    <div class="mb-8">
+        <livewire:arbitrage-executions />
+    </div>
+
     {{-- Stats --}}
     <div class="mb-6 grid gap-4 sm:grid-cols-3">
         <flux:card>
