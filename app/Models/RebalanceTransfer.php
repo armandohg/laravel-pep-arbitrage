@@ -28,9 +28,10 @@ class RebalanceTransfer extends Model
         ];
     }
 
-    public static function hasPendingTo(string $toExchange, string $currency): bool
+    public static function hasPendingTo(string $fromExchange, string $toExchange, string $currency): bool
     {
-        return static::where('to_exchange', $toExchange)
+        return static::where('from_exchange', $fromExchange)
+            ->where('to_exchange', $toExchange)
             ->where('currency', $currency)
             ->whereNull('settled_at')
             ->where('expires_at', '>', now())

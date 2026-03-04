@@ -180,7 +180,7 @@ final class RebalanceService
     public function execute(RebalancePlan $plan): void
     {
         foreach ($plan->transfers as $transfer) {
-            if (RebalanceTransfer::hasPendingTo($transfer->toExchange, $transfer->currency)) {
+            if (RebalanceTransfer::hasPendingTo($transfer->fromExchange, $transfer->toExchange, $transfer->currency)) {
                 Log::warning('Rebalance transfer skipped: pending transfer already in progress.', [
                     'to_exchange' => $transfer->toExchange,
                     'currency' => $transfer->currency,
@@ -220,7 +220,7 @@ final class RebalanceService
     {
         return array_values(array_filter(
             $transfers,
-            fn (Transfer $t) => RebalanceTransfer::hasPendingTo($t->toExchange, $t->currency),
+            fn (Transfer $t) => RebalanceTransfer::hasPendingTo($t->fromExchange, $t->toExchange, $t->currency),
         ));
     }
 }

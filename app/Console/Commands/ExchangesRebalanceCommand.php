@@ -162,7 +162,7 @@ final class ExchangesRebalanceCommand extends Command
 
         foreach ($plan->transfers as $i => $transfer) {
             $n = $i + 1;
-            $isPending = RebalanceTransfer::hasPendingTo($transfer->toExchange, $transfer->currency);
+            $isPending = RebalanceTransfer::hasPendingTo($transfer->fromExchange, $transfer->toExchange, $transfer->currency);
 
             $this->line(sprintf(
                 '  <fg=cyan>#%d</> %s  %s → %s  via [%s]  fee ~%s %s',
