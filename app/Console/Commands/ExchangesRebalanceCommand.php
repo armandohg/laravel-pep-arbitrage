@@ -5,7 +5,6 @@ namespace App\Console\Commands;
 use App\Models\RebalanceTransfer;
 use App\Rebalance\RebalancePlan;
 use App\Rebalance\RebalanceService;
-use App\Rebalance\Transfer;
 use Illuminate\Console\Command;
 
 use function Laravel\Prompts\confirm;
@@ -61,6 +60,8 @@ final class ExchangesRebalanceCommand extends Command
         if ($manual) {
             $this->newLine();
             $this->renderManualCode($plan);
+        } elseif ($interactive) {
+            $this->executeInteractive($plan);
         } elseif ($execute) {
             $this->warn('Executing transfers...');
             $this->rebalanceService->execute($plan);
@@ -150,6 +151,60 @@ final class ExchangesRebalanceCommand extends Command
         }
 
         $this->line('─────────────────────────────────────────────────────────────────────');
+    }
+
+    private function executeInteractive(RebalancePlan $plan): void
+    {
+        $this->newLine();
+
+        $executed = 0;
+        $skipped = 0;
+
+        foreach ($plan->transfers as $i => $transfer) {
+            $n = $i + 1;
+            $isPending = RebalanceTransfer::hasPendingTo($transfer->toExchange, $transfer->currency);
+
+            $this->line(sprintf(
+                '  <fg=cyan>#%d</> %s  %s → %s  via [%s]  fee ~%s %s',
+                $n,
+                number_format($transfer->amount, $transfer->currency === 'PEP' ? 0 : 8).' '.$transfer->currency,
+                $transfer->fromExchange,
+                $transfer->toExchange,
+                $transfer->network,
+                $transfer->networkFee,
+                $transfer->currency,
+            ));
+
+            if ($transfer->krakenStep !== null) {
+                $this->line("         <fg=yellow>⚠  {$transfer->krakenStep}</>");
+            }
+
+            if ($isPending) {
+                $this->line('         <fg=yellow>⚠  Pending transfer already in progress — skipping.</>');
+                $this->newLine();
+                $skipped++;
+
+                continue;
+            }
+
+            $confirmed = confirm(
+                label: "Execute transfer #{$n}?",
+                default: false,
+            );
+
+            if ($confirmed) {
+                $this->rebalanceService->executeTransfer($transfer);
+                $this->info("         ✓ Transfer #{$n} sent.");
+                $executed++;
+            } else {
+                $this->line('         Skipped.');
+                $skipped++;
+            }
+
+            $this->newLine();
+        }
+
+        $this->line(sprintf('Done. %d executed, %d skipped.', $executed, $skipped));
     }
 
     private function renderPendingWarnings(RebalancePlan $plan): void
