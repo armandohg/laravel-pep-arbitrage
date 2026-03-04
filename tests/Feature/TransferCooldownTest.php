@@ -36,6 +36,34 @@ test('hasPendingTo returns true when a non-expired transfer exists', function ()
     expect(RebalanceTransfer::hasPendingTo('Kraken', 'PEP'))->toBeTrue();
 });
 
+test('hasPendingTo returns false when transfer is settled', function () {
+    RebalanceTransfer::create([
+        'from_exchange' => 'Mexc',
+        'to_exchange' => 'Kraken',
+        'currency' => 'PEP',
+        'amount' => 1_000_000,
+        'network' => 'PEP',
+        'expires_at' => now()->addMinutes(30),
+        'settled_at' => now()->subMinutes(5),
+    ]);
+
+    expect(RebalanceTransfer::hasPendingTo('Kraken', 'PEP'))->toBeFalse();
+});
+
+test('hasPendingTo returns true when transfer is unsettled and within expiry', function () {
+    RebalanceTransfer::create([
+        'from_exchange' => 'Mexc',
+        'to_exchange' => 'Kraken',
+        'currency' => 'USDT',
+        'amount' => 100,
+        'network' => 'TRC20',
+        'expires_at' => now()->addMinutes(30),
+        'settled_at' => null,
+    ]);
+
+    expect(RebalanceTransfer::hasPendingTo('Kraken', 'USDT'))->toBeTrue();
+});
+
 test('hasPendingTo returns false when transfer is expired', function () {
     RebalanceTransfer::create([
         'from_exchange' => 'Mexc',

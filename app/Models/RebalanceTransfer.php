@@ -16,6 +16,7 @@ class RebalanceTransfer extends Model
         'amount',
         'network',
         'expires_at',
+        'settled_at',
     ];
 
     protected function casts(): array
@@ -23,6 +24,7 @@ class RebalanceTransfer extends Model
         return [
             'amount' => 'float',
             'expires_at' => 'datetime',
+            'settled_at' => 'datetime',
         ];
     }
 
@@ -30,8 +32,19 @@ class RebalanceTransfer extends Model
     {
         return static::where('to_exchange', $toExchange)
             ->where('currency', $currency)
+            ->whereNull('settled_at')
             ->where('expires_at', '>', now())
             ->exists();
+    }
+
+    /** @return \Illuminate\Database\Eloquent\Collection<int, self> */
+    public static function pendingUnsettledForKraken(): \Illuminate\Database\Eloquent\Collection
+    {
+        return static::where('to_exchange', 'Kraken')
+            ->where('currency', 'USDT')
+            ->whereNull('settled_at')
+            ->where('expires_at', '>', now())
+            ->get();
     }
 
     public static function record(Transfer $transfer, CarbonInterface $expiresAt): self
