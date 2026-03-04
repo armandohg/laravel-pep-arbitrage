@@ -177,7 +177,7 @@ class Mexc extends BaseExchange
     /**
      * @return array<string, mixed>
      */
-    public function withdraw(string $currency, float $amount, string $address, string $network): array
+    public function withdraw(string $currency, float $amount, string $address, string $network, ?string $withdrawKey = null): array
     {
         $url = config('exchanges.mexc.base_url').'/api/v3/capital/withdraw/apply';
 

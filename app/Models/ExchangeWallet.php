@@ -16,6 +16,7 @@ class ExchangeWallet extends Model
         'network_code',
         'address',
         'memo',
+        'withdraw_key',
         'is_active',
     ];
 

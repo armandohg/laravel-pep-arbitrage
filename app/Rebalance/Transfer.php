@@ -15,5 +15,6 @@ final readonly class Transfer
         public float $networkFee,
         public ?string $memo = null,
         public ?string $krakenStep = null,
+        public ?string $withdrawKey = null,
     ) {}
 }

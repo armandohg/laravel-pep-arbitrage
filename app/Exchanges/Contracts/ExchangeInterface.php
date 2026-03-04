@@ -36,5 +36,5 @@ interface ExchangeInterface
      *
      * @return array<string, mixed>
      */
-    public function withdraw(string $currency, float $amount, string $address, string $network): array;
+    public function withdraw(string $currency, float $amount, string $address, string $network, ?string $withdrawKey = null): array;
 }

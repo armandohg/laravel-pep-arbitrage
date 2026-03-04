@@ -161,7 +161,7 @@ class CoinEx extends BaseExchange
     /**
      * @return array<string, mixed>
      */
-    public function withdraw(string $currency, float $amount, string $address, string $network): array
+    public function withdraw(string $currency, float $amount, string $address, string $network, ?string $withdrawKey = null): array
     {
         $url = config('exchanges.coinex.base_url').'/v2/assets/withdraw';
 

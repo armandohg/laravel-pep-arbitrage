@@ -54,6 +54,7 @@ final class TransferRouteService
             'fee' => $route->fee,
             'address' => $route->wallet->address,
             'memo' => $route->wallet->memo,
+            'withdraw_key' => $route->wallet->withdraw_key,
         ];
     }
 }

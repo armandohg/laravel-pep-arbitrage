@@ -163,6 +163,7 @@ final class RebalanceService
                     networkFee: $route['fee'],
                     memo: $route['memo'],
                     krakenStep: $krakenStep,
+                    withdrawKey: $route['withdraw_key'] ?? null,
                 );
 
                 $surpluses[$fromExchange] -= $amount;
@@ -184,7 +185,7 @@ final class RebalanceService
             }
 
             $this->registry->get($transfer->fromExchange)
-                ->withdraw($transfer->currency, $transfer->amount, $transfer->address, $transfer->networkId);
+                ->withdraw($transfer->currency, $transfer->amount, $transfer->address, $transfer->networkId, $transfer->withdrawKey);
         }
     }
 }
