@@ -168,7 +168,7 @@ class CoinEx extends BaseExchange
         return $this->request('POST', $url, [
             'ccy' => $currency,
             'to_address' => $address,
-            'amount' => $amount,
+            'amount' => round($amount, 2),
             'chain' => $network,
         ], true);
     }

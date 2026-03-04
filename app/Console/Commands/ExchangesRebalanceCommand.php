@@ -116,7 +116,7 @@ final class ExchangesRebalanceCommand extends Command
 
         foreach ($plan->transfers as $i => $transfer) {
             $n = $i + 1;
-            $amount = number_format($transfer->amount, $transfer->currency === 'PEP' ? 2 : 8, '.', '');
+            $amount = number_format($transfer->amount, $transfer->currency === 'PEP' ? 2 : 2, '.', '');
 
             $lines = [];
 
