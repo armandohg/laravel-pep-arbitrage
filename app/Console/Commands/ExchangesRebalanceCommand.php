@@ -119,6 +119,9 @@ final class ExchangesRebalanceCommand extends Command
             $lines[] = "    amount: {$amount},";
             $lines[] = "    address: '{$transfer->address}',";
             $lines[] = "    network: '{$transfer->networkId}',";
+            if ($transfer->withdrawKey !== null) {
+                $lines[] = "    withdrawKey: '{$transfer->withdrawKey}',";
+            }
             $lines[] = ');';
 
             if ($transfer->krakenStep !== null && str_starts_with($transfer->krakenStep, 'sell')) {
