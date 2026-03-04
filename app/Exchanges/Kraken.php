@@ -124,14 +124,15 @@ class Kraken extends BaseExchange
     /**
      * @return array<string, mixed>
      */
-    public function withdraw(string $currency, float $amount, string $address, string $network): array
+    public function withdraw(string $currency, float $amount, string $address, string $network, ?string $withdrawKey = null): array
     {
         $url = config('exchanges.kraken.base_url').'/private/Withdraw';
 
         return $this->requestPrivate($url, [
             'asset' => $currency,
-            'key' => $address,
-            'amount' => $amount,
+            'key' => $withdrawKey ?? $address,
+            'amount' => (string) $amount,
+            'address' => $address,
         ]);
     }
 
@@ -197,24 +198,23 @@ class Kraken extends BaseExchange
      */
     private function requestPrivate(string $url, array $postData = []): array
     {
-        $nonce = (string) (int) (microtime(true) * 1000);
-        $postData['nonce'] = $nonce;
-
-        $postBody = http_build_query($postData);
         $parsedPath = parse_url($url, PHP_URL_PATH) ?? '';
-
-        $message = $parsedPath.hash('sha256', $nonce.$postBody, true);
         $decodedSecret = base64_decode($this->apiSecret);
-        $signature = base64_encode(hash_hmac('sha512', $message, $decodedSecret, true));
-
         $lastException = null;
 
         for ($attempt = 1; $attempt <= 5; $attempt++) {
             try {
+                $nonce = (string) (int) (microtime(true) * 1000);
+                $payload = array_merge($postData, ['nonce' => $nonce]);
+                $postBody = http_build_query($payload);
+
+                $message = $parsedPath.hash('sha256', $nonce.$postBody, true);
+                $signature = base64_encode(hash_hmac('sha512', $message, $decodedSecret, true));
+
                 $response = Http::asForm()->withHeaders([
                     'API-Key' => $this->apiKey,
                     'API-Sign' => $signature,
-                ])->post($url, $postData);
+                ])->post($url, $payload);
 
                 if ($response->successful()) {
                     $json = $response->json();
