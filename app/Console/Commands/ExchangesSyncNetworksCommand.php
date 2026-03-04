@@ -82,7 +82,9 @@ final class ExchangesSyncNetworksCommand extends Command
             $networkList = $coinData['networkList'] ?? $coinData['chains'] ?? [];
 
             foreach ($networkList as $net) {
-                $networkId = $net['network'] ?? $net['chain'] ?? '';
+                // MEXC has both 'network' (display name) and 'netWork' (actual API code for withdrawals).
+                // CoinEx uses 'chain'. Prefer the actual withdraw code when available.
+                $networkId = $net['netWork'] ?? $net['network'] ?? $net['chain'] ?? '';
                 $networkCode = $this->canonicalize($networkId);
                 $depositEnabled = (bool) ($net['depositEnable'] ?? $net['isDepositEnable'] ?? true);
                 $withdrawEnabled = (bool) ($net['withdrawEnable'] ?? $net['isWithdrawEnable'] ?? true);

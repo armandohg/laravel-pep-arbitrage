@@ -114,6 +114,34 @@ class Mexc extends BaseExchange
     }
 
     /**
+     * List withdrawal methods (networks) available on the account for a given currency.
+     *
+     * @return array<int, array{network: string, netWork: string, withdrawFee: string, withdrawEnable: bool, withdrawMin: string, withdrawMax: string}>
+     */
+    public function getWithdrawalMethods(string $currency): array
+    {
+        $url = config('exchanges.mexc.base_url').'/api/v3/capital/config/getall';
+        $response = $this->request('GET', $url, [], true);
+
+        $coin = collect($response)->firstWhere('coin', strtoupper($currency));
+
+        return $coin['networkList'] ?? [];
+    }
+
+    /**
+     * List withdrawal addresses saved in the account whitelist for a given currency.
+     *
+     * @return array<int, array{address: string, coin: string, network: string, memo: string|null, remark: string}>
+     */
+    public function getWithdrawalAddresses(string $currency): array
+    {
+        $url = config('exchanges.mexc.base_url').'/api/v3/capital/withdraw/address';
+        $response = $this->request('GET', $url, ['coin' => strtoupper($currency)], true);
+
+        return is_array($response) ? $response : [];
+    }
+
+    /**
      * Fetch withdrawal network configurations for the given assets.
      *
      * @param  string[]  $assets
@@ -179,7 +207,7 @@ class Mexc extends BaseExchange
      */
     public function withdraw(string $currency, float $amount, string $address, string $network, ?string $withdrawKey = null): array
     {
-        $url = config('exchanges.mexc.base_url').'/api/v3/capital/withdraw/apply';
+        $url = config('exchanges.mexc.base_url').'/api/v3/capital/withdraw';
 
         return $this->request('POST', $url, [
             'coin' => $currency,
