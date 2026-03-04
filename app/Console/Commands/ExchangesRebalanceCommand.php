@@ -2,9 +2,13 @@
 
 namespace App\Console\Commands;
 
+use App\Models\RebalanceTransfer;
 use App\Rebalance\RebalancePlan;
 use App\Rebalance\RebalanceService;
+use App\Rebalance\Transfer;
 use Illuminate\Console\Command;
+
+use function Laravel\Prompts\confirm;
 
 final class ExchangesRebalanceCommand extends Command
 {
@@ -12,6 +16,7 @@ final class ExchangesRebalanceCommand extends Command
         {--tolerance=0.10 : Allowed deviation per exchange (default 10%)}
         {--network= : Force a specific network (e.g. ERC20, TRC20, PEP)}
         {--execute : Execute the transfers (default is dry-run)}
+        {--interactive : Confirm each transfer one by one before executing (requires --execute)}
         {--manual : Output Tinkerwell-ready PHP code for each transfer instead of executing}';
 
     protected $description = 'Rebalance PEP and USDT across all exchanges';
@@ -25,8 +30,15 @@ final class ExchangesRebalanceCommand extends Command
     {
         $tolerance = (float) $this->option('tolerance');
         $execute = (bool) $this->option('execute');
+        $interactive = (bool) $this->option('interactive');
         $manual = (bool) $this->option('manual');
         $network = $this->option('network') ?: null;
+
+        if ($interactive && ! $execute) {
+            $this->error('--interactive requires --execute.');
+
+            return self::FAILURE;
+        }
 
         $plan = $this->rebalanceService->plan($tolerance, $network);
 
@@ -44,6 +56,7 @@ final class ExchangesRebalanceCommand extends Command
         }
 
         $this->renderTransfers($plan);
+        $this->renderPendingWarnings($plan);
 
         if ($manual) {
             $this->newLine();
@@ -137,6 +150,20 @@ final class ExchangesRebalanceCommand extends Command
         }
 
         $this->line('─────────────────────────────────────────────────────────────────────');
+    }
+
+    private function renderPendingWarnings(RebalancePlan $plan): void
+    {
+        $blocked = $this->rebalanceService->pendingBlockedTransfers($plan->transfers);
+
+        if (empty($blocked)) {
+            return;
+        }
+
+        $this->newLine();
+        foreach ($blocked as $transfer) {
+            $this->warn("⚠  Pending transfer in progress → {$transfer->toExchange} ({$transfer->currency}). This transfer will be skipped on --execute.");
+        }
     }
 
     private function renderTransfers(RebalancePlan $plan): void

@@ -3,6 +3,9 @@
 namespace App\Rebalance;
 
 use App\Exchanges\ExchangeRegistry;
+use App\Models\ExchangeTransferCooldown;
+use App\Models\RebalanceTransfer;
+use Illuminate\Support\Facades\Log;
 
 final class RebalanceService
 {
@@ -177,15 +180,47 @@ final class RebalanceService
     public function execute(RebalancePlan $plan): void
     {
         foreach ($plan->transfers as $transfer) {
-            // If Kraken needs to buy USDT first
-            if ($transfer->krakenStep !== null && str_starts_with($transfer->krakenStep, 'buy')) {
-                /** @var \App\Exchanges\Kraken $kraken */
-                $kraken = $this->registry->get('Kraken');
-                $kraken->buyUsdt($transfer->amount);
+            if (RebalanceTransfer::hasPendingTo($transfer->toExchange, $transfer->currency)) {
+                Log::warning('Rebalance transfer skipped: pending transfer already in progress.', [
+                    'to_exchange' => $transfer->toExchange,
+                    'currency' => $transfer->currency,
+                    'amount' => $transfer->amount,
+                ]);
+
+                continue;
             }
 
-            $this->registry->get($transfer->fromExchange)
-                ->withdraw($transfer->currency, $transfer->amount, $transfer->address, $transfer->networkId, $transfer->withdrawKey);
+            $this->executeTransfer($transfer);
         }
+    }
+
+    public function executeTransfer(Transfer $transfer): void
+    {
+        // If Kraken needs to buy USDT first
+        if ($transfer->krakenStep !== null && str_starts_with($transfer->krakenStep, 'buy')) {
+            /** @var \App\Exchanges\Kraken $kraken */
+            $kraken = $this->registry->get('Kraken');
+            $kraken->buyUsdt($transfer->amount);
+        }
+
+        $this->registry->get($transfer->fromExchange)
+            ->withdraw($transfer->currency, $transfer->amount, $transfer->address, $transfer->networkId, $transfer->withdrawKey);
+
+        $cooldownMinutes = ExchangeTransferCooldown::minutesFor($transfer->toExchange, $transfer->currency);
+        RebalanceTransfer::record($transfer, now()->addMinutes($cooldownMinutes));
+    }
+
+    /**
+     * Returns transfers from a plan that are blocked by a pending in-flight transfer.
+     *
+     * @param  Transfer[]  $transfers
+     * @return Transfer[]
+     */
+    public function pendingBlockedTransfers(array $transfers): array
+    {
+        return array_values(array_filter(
+            $transfers,
+            fn (Transfer $t) => RebalanceTransfer::hasPendingTo($t->toExchange, $t->currency),
+        ));
     }
 }
