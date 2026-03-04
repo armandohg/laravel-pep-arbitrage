@@ -11,7 +11,8 @@ final class ExchangesRebalanceCommand extends Command
     protected $signature = 'exchanges:rebalance
         {--tolerance=0.10 : Allowed deviation per exchange (default 10%)}
         {--network= : Force a specific network (e.g. ERC20, TRC20, PEP)}
-        {--execute : Execute the transfers (default is dry-run)}';
+        {--execute : Execute the transfers (default is dry-run)}
+        {--manual : Output Tinkerwell-ready PHP code for each transfer instead of executing}';
 
     protected $description = 'Rebalance PEP and USDT across all exchanges';
 
@@ -24,6 +25,7 @@ final class ExchangesRebalanceCommand extends Command
     {
         $tolerance = (float) $this->option('tolerance');
         $execute = (bool) $this->option('execute');
+        $manual = (bool) $this->option('manual');
         $network = $this->option('network') ?: null;
 
         $plan = $this->rebalanceService->plan($tolerance, $network);
@@ -43,13 +45,16 @@ final class ExchangesRebalanceCommand extends Command
 
         $this->renderTransfers($plan);
 
-        if ($execute) {
+        if ($manual) {
+            $this->newLine();
+            $this->renderManualCode($plan);
+        } elseif ($execute) {
             $this->warn('Executing transfers...');
             $this->rebalanceService->execute($plan);
             $this->info('Done.');
         } else {
             $this->newLine();
-            $this->line('Run with --execute to apply.');
+            $this->line('Run with --execute to apply, or --manual to get Tinkerwell code.');
         }
 
         return self::SUCCESS;
@@ -88,6 +93,47 @@ final class ExchangesRebalanceCommand extends Command
             number_format($target->quoteUsdt, 2),
         ));
         $this->newLine();
+    }
+
+    private function renderManualCode(RebalancePlan $plan): void
+    {
+        $this->line('── Tinkerwell code ──────────────────────────────────────────────────');
+        $this->newLine();
+
+        foreach ($plan->transfers as $i => $transfer) {
+            $n = $i + 1;
+            $amount = number_format($transfer->amount, $transfer->currency === 'PEP' ? 2 : 8, '.', '');
+
+            $lines = [];
+
+            if ($transfer->krakenStep !== null && str_starts_with($transfer->krakenStep, 'buy')) {
+                $lines[] = "// ⚠  {$transfer->krakenStep}";
+                $lines[] = "app(\\App\\Exchanges\\Kraken::class)->buyUsdt({$amount});";
+                $lines[] = '';
+            }
+
+            $exchangeClass = "\\App\\Exchanges\\{$transfer->fromExchange}";
+            $lines[] = "// Transfer #{$n}: {$transfer->fromExchange} → {$transfer->toExchange} | {$transfer->currency} via {$transfer->network} | fee ~{$transfer->networkFee} {$transfer->currency}";
+            $lines[] = "app({$exchangeClass}::class)->withdraw(";
+            $lines[] = "    currency: '{$transfer->currency}',";
+            $lines[] = "    amount: {$amount},";
+            $lines[] = "    address: '{$transfer->address}',";
+            $lines[] = "    network: '{$transfer->networkId}',";
+            $lines[] = ');';
+
+            if ($transfer->krakenStep !== null && str_starts_with($transfer->krakenStep, 'sell')) {
+                $lines[] = '';
+                $lines[] = "// ⚠  {$transfer->krakenStep}";
+            }
+
+            foreach ($lines as $line) {
+                $this->line($line);
+            }
+
+            $this->newLine();
+        }
+
+        $this->line('─────────────────────────────────────────────────────────────────────');
     }
 
     private function renderTransfers(RebalancePlan $plan): void
