@@ -24,6 +24,7 @@ class FindArbitrageCommand extends Command
         {--once : Run a single discovery poll and exit}
         {--pretend : Ignore balances and detect the maximum theoretical opportunity (simulation only)}
         {--execute : Execute real orders when opportunity is confirmed}
+        {--exit-after-execution : Stop the process after the first successful arbitrage execution}
         {--min-amount=0 : Minimum trade amount in USD/USDT to consider an opportunity (e.g. 5 = $5 minimum)}';
 
     protected $description = 'Monitor PEP order books across exchanges and detect arbitrage opportunities';
@@ -78,6 +79,10 @@ class FindArbitrageCommand extends Command
 
                 if ($confirmed) {
                     $this->executeBestOpportunity($best, $pretend);
+
+                    if ($this->option('exit-after-execution')) {
+                        break;
+                    }
                 }
             }
 

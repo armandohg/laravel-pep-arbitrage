@@ -156,7 +156,7 @@ class Kraken extends BaseExchange
 
         $response = $this->requestPrivate($url, $params);
 
-        return ['orderId' => (string) ($response['result']['txids'][0] ?? '')];
+        return ['orderId' => (string) ($response['result']['txid'][0] ?? '')];
     }
 
     /**
@@ -217,7 +217,13 @@ class Kraken extends BaseExchange
                 ])->post($url, $postData);
 
                 if ($response->successful()) {
-                    return $response->json();
+                    $json = $response->json();
+
+                    if (! empty($json['error'])) {
+                        throw new RuntimeException('Kraken API error: '.implode(', ', $json['error']));
+                    }
+
+                    return $json;
                 }
 
                 $lastException = new RuntimeException(

@@ -151,6 +151,10 @@ class CoinEx extends BaseExchange
 
         $response = $this->request('POST', $url, $params, true);
 
+        if (($response['code'] ?? 0) !== 0) {
+            throw new RuntimeException('CoinEx order error: '.($response['message'] ?? 'unknown error'));
+        }
+
         return ['orderId' => (string) ($response['data']['order_id'] ?? '')];
     }
 
