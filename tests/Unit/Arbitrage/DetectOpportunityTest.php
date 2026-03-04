@@ -37,7 +37,12 @@ function fakeExchange(string $name, float $fee): ExchangeInterface
             return [];
         }
 
-        public function withdraw(string $currency, float $amount, string $address, string $network): array
+        public function placeOrder(string $symbol, string $side, float $amount, string $type, ?float $price = null): array
+        {
+            return [];
+        }
+
+        public function withdraw(string $currency, float $amount, string $address, string $network, ?string $withdrawKey = null): array
         {
             return [];
         }
@@ -190,13 +195,13 @@ it('caps the filled amount by quoteBalance (buy side)', function () {
     $buyBook = book([], [level(1.00, 1000.0)]);
     $sellBook = book([level(1.10, 1000.0)], []);
 
-    // quoteBalance = 200 USDT → max 200 PEP buyable at 1.00; baseBalance = null (no sell cap)
+    // quoteBalance = 200 USDT → 0.5% buffer applied → 199.0 USDT effective → 199 PEP buyable at 1.00
     $result = $detector->detect($buyExchange, $buyBook, $sellExchange, $sellBook, 0.0, 200.0, null);
 
     expect($result)->not->toBeNull();
-    expect($result->amount)->toBe(200.0);
-    expect($result->totalBuyCost)->toBeCloseTo(200.0, 6);
-    expect($result->totalSellRevenue)->toBeCloseTo(220.0, 6);
+    expect($result->amount)->toBe(199.0);
+    expect($result->totalBuyCost)->toBeCloseTo(199.0, 6);
+    expect($result->totalSellRevenue)->toBeCloseTo(218.9, 6);
 });
 
 it('returns null when quoteBalance is zero', function () {

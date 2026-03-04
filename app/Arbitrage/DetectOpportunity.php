@@ -224,7 +224,8 @@ class DetectOpportunity
             return $asks;
         }
 
-        $remaining = $quoteBalance;
+        $buffer = config('arbitrage.balance_buffer', 0.005);
+        $remaining = $quoteBalance * (1 - $buffer);
         $result = [];
 
         foreach ($asks as $ask) {
@@ -260,7 +261,8 @@ class DetectOpportunity
             return $bids;
         }
 
-        $remaining = $baseBalance;
+        $buffer = config('arbitrage.balance_buffer', 0.005);
+        $remaining = $baseBalance * (1 - $buffer);
         $result = [];
 
         foreach ($bids as $bid) {
