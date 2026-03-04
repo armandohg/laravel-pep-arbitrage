@@ -9,6 +9,7 @@ use App\Exchanges\Contracts\ExchangeInterface;
 use App\Exchanges\ExchangeRegistry;
 use App\Models\ArbitrageOpportunity;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -290,6 +291,9 @@ class FindArbitrageCommand extends Command
         $sellPrice = ! empty($opportunity->sellLevels) ? min(array_column($opportunity->sellLevels, 'price')) : $opportunity->avgSellPrice;
 
         $model?->recordExecution($result, $opportunity->amount, $buyPrice, $sellPrice);
+
+        Cache::forget('exchange_balances_'.strtolower($opportunity->buyExchange));
+        Cache::forget('exchange_balances_'.strtolower($opportunity->sellExchange));
 
         if ($result->success) {
             $this->info(sprintf(
