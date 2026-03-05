@@ -5,6 +5,7 @@ use App\Exchanges\CoinEx;
 use App\Exchanges\Kraken;
 use App\Exchanges\Mexc;
 use App\Models\ArbitrageOpportunity;
+use App\Models\ArbitrageSettings;
 
 $krakenUsdtBook = [
     'bids' => [['price' => 0.9995, 'amount' => 1000.0]],
@@ -130,7 +131,9 @@ it('does not persist when spread is below --min-profit threshold', function () u
         ->shouldReceive('getOrderBook')->with('pep_usd')->andReturn($emptyBook)
         ->shouldReceive('getOrderBook')->with('usdt_usd')->andReturn($krakenUsdtBook);
 
-    $this->artisan('arbitrage:find', ['--once' => true, '--pretend' => true, '--min-profit' => '0.99'])
+    ArbitrageSettings::current()->update(['min_profit_ratio' => 0.99]);
+
+    $this->artisan('arbitrage:find', ['--once' => true, '--pretend' => true])
         ->expectsOutputToContain('No opportunities above')
         ->assertSuccessful();
 
@@ -297,10 +300,12 @@ it('warns and skips orders when --pretend and --execute are both set', function 
         ->shouldReceive('getOrderBook')->with('pep_usd')->andReturn($emptyBook)
         ->shouldReceive('getOrderBook')->with('usdt_usd')->andReturn($krakenUsdtBook);
 
+    ArbitrageSettings::current()->update(['sustain_duration' => 0, 'execute_orders' => true]);
+
     $this->mock(ExecuteArbitrage::class)
         ->shouldNotReceive('execute');
 
-    $this->artisan('arbitrage:find', ['--once' => true, '--pretend' => true, '--execute' => true, '--sustain' => 0])
+    $this->artisan('arbitrage:find', ['--once' => true, '--pretend' => true])
         ->expectsOutputToContain('[pretend] Would execute trade')
         ->assertSuccessful();
 });
@@ -337,10 +342,12 @@ it('warns to use --execute when opportunity is confirmed without it', function (
         ->shouldReceive('getOrderBook')->with('usdt_usd')->andReturn($krakenUsdtBook)
         ->shouldReceive('getBalances')->andReturn([]);
 
+    ArbitrageSettings::current()->update(['sustain_duration' => 0]);
+
     $this->mock(ExecuteArbitrage::class)
         ->shouldNotReceive('execute');
 
-    $this->artisan('arbitrage:find', ['--once' => true, '--sustain' => 0])
-        ->expectsOutputToContain('--execute')
+    $this->artisan('arbitrage:find', ['--once' => true])
+        ->expectsOutputToContain('Enable "Execute Real Orders" in settings')
         ->assertSuccessful();
 });

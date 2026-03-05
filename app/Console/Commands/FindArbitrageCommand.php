@@ -8,6 +8,7 @@ use App\Arbitrage\ValueObjects\OpportunityData;
 use App\Exchanges\Contracts\ExchangeInterface;
 use App\Exchanges\ExchangeRegistry;
 use App\Models\ArbitrageOpportunity;
+use App\Models\ArbitrageSettings;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -16,16 +17,9 @@ use Throwable;
 class FindArbitrageCommand extends Command
 {
     protected $signature = 'arbitrage:find
-        {--interval=5 : Seconds between discovery polls}
-        {--min-profit=0.003 : Minimum profit ratio to record (e.g. 0.003 = 0.3%)}
-        {--sustain=10 : Seconds the winning pair must hold before executing}
-        {--sustain-interval=2 : Seconds between checks during the sustain phase}
-        {--stability=0.5 : Profit % drift tolerance during sustain (e.g. 0.5 = ±0.5%)}
         {--once : Run a single discovery poll and exit}
         {--pretend : Ignore balances and detect the maximum theoretical opportunity (simulation only)}
-        {--execute : Execute real orders when opportunity is confirmed}
-        {--exit-after-execution : Stop the process after the first successful arbitrage execution}
-        {--min-amount=0 : Minimum trade amount in USD/USDT to consider an opportunity (e.g. 5 = $5 minimum)}';
+        {--exit-after-execution : Stop the process after the first successful arbitrage execution}';
 
     protected $description = 'Monitor PEP order books across exchanges and detect arbitrage opportunities';
 
@@ -41,25 +35,10 @@ class FindArbitrageCommand extends Command
 
     public function handle(): int
     {
-        $interval = (int) $this->option('interval');
-        $minProfit = (float) $this->option('min-profit');
-        $minAmount = (float) $this->option('min-amount');
-        $sustainDuration = (int) $this->option('sustain');
-        $sustainInterval = (int) $this->option('sustain-interval');
-        $stability = (float) $this->option('stability');
         $once = (bool) $this->option('once');
         $pretend = (bool) $this->option('pretend');
 
-        $this->info(sprintf(
-            'PEP arbitrage monitor | discovery: %ds | sustain: %ds (check every %ds, tolerance ±%.1f%%) | min-profit: %.2f%% | min-amount: $%.2f%s',
-            $interval,
-            $sustainDuration,
-            $sustainInterval,
-            $stability,
-            $minProfit * 100,
-            $minAmount,
-            $pretend ? ' | pretend mode' : '',
-        ));
+        $this->info('PEP arbitrage monitor | settings loaded from DB'.($pretend ? ' | pretend mode' : ''));
 
         $shouldStop = false;
 
@@ -70,15 +49,27 @@ class FindArbitrageCommand extends Command
         });
 
         do {
+            // Re-read settings from DB once per discovery cycle so changes take effect without restart.
+            $settings = ArbitrageSettings::current();
+
             // Phase 1 — Discovery: poll all pairs and find the best opportunity.
-            $best = $this->discoverBestOpportunity($minProfit, $minAmount, $pretend);
+            $best = $this->discoverBestOpportunity($settings->min_profit_ratio, $settings->min_amount, $pretend);
 
             if ($best !== null) {
                 // Phase 2 — Sustain: monitor only the winning pair until confirmed or lost.
-                $confirmed = $this->monitorUntilConfirmed($best, $minProfit, $minAmount, $sustainDuration, $sustainInterval, $stability, $pretend, $shouldStop);
+                $confirmed = $this->monitorUntilConfirmed(
+                    $best,
+                    $settings->min_profit_ratio,
+                    $settings->min_amount,
+                    $settings->sustain_duration,
+                    $settings->sustain_interval,
+                    $settings->stability,
+                    $pretend,
+                    $shouldStop,
+                );
 
                 if ($confirmed) {
-                    $this->executeBestOpportunity($best, $pretend);
+                    $this->executeBestOpportunity($best, $pretend, $settings->execute_orders);
 
                     if ($this->option('exit-after-execution')) {
                         break;
@@ -87,7 +78,7 @@ class FindArbitrageCommand extends Command
             }
 
             if (! $once && ! $shouldStop) {
-                sleep($interval);
+                sleep($settings->discovery_interval);
             }
         } while (! $once && ! $shouldStop);
 
@@ -261,7 +252,7 @@ class FindArbitrageCommand extends Command
     /**
      * Execute the confirmed opportunity.
      */
-    protected function executeBestOpportunity(OpportunityData $opportunity, bool $pretend): void
+    protected function executeBestOpportunity(OpportunityData $opportunity, bool $pretend, bool $executeOrders): void
     {
         $this->info(sprintf(
             '[%s] >>> EXECUTION CRITERIA MET: %s → %s | profit: +%.4f%% | %s USDT <<<',
@@ -278,8 +269,8 @@ class FindArbitrageCommand extends Command
             return;
         }
 
-        if (! $this->option('execute')) {
-            $this->warn('Use --execute to place real orders.');
+        if (! $executeOrders) {
+            $this->warn('Enable "Execute Real Orders" in settings to place real orders.');
 
             return;
         }
