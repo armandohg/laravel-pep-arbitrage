@@ -1,6 +1,5 @@
 <?php
 
-use App\Console\Commands\ExchangesRebalanceCommand;
 use App\Console\Commands\ExchangesSettleKrakenCommand;
 use App\Console\Commands\ExchangesSnapshotBalancesCommand;
 use Illuminate\Console\Scheduling\Schedule;
@@ -17,7 +16,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withSchedule(function (Schedule $schedule): void {
         $schedule->command(ExchangesSnapshotBalancesCommand::class)->everyFifteenMinutes();
         $schedule->command(ExchangesSettleKrakenCommand::class)->everyMinute()->withoutOverlapping();
-        $schedule->command(ExchangesRebalanceCommand::class, ['--execute' => true])->everyTenMinutes()->withoutOverlapping();
+        $schedule->command('exchanges:rebalance --execute')->everyTenMinutes()->withoutOverlapping();
     })
     ->withMiddleware(function (Middleware $middleware): void {
         //
