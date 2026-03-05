@@ -47,12 +47,17 @@ class ExecuteArbitrage
 
         $buyOrderId = $buyResult['orderId'];
 
+        // The buy fee is charged in PEP (the received currency), so the actual PEP
+        // received is amount × (1 − buyFee). Selling the original amount would draw
+        // that fee difference from the existing balance on every trade.
+        $sellAmount = $opportunity->amount * (1 - $buyExchange->getTxFee());
+
         // Place sell order — if it fails we have an open buy position.
         try {
             $sellResult = $sellExchange->placeOrder(
                 $sellSymbol,
                 'sell',
-                $opportunity->amount,
+                $sellAmount,
                 $orderType,
                 $orderType === 'limit' ? $sellPrice : null,
             );
