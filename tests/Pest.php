@@ -23,6 +23,10 @@ pest()->extend(Tests\TestCase::class)
     ->use(Illuminate\Foundation\Testing\RefreshDatabase::class)
     ->in('Unit/Rebalance');
 
+pest()->extend(Tests\TestCase::class)
+    ->use(Illuminate\Foundation\Testing\RefreshDatabase::class)
+    ->in('Unit/Models');
+
 /*
 |--------------------------------------------------------------------------
 | Expectations
