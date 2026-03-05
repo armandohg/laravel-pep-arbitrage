@@ -9,6 +9,11 @@ use Illuminate\Support\Facades\Log;
 
 final class RebalanceService
 {
+    private const MIN_TRANSFER_AMOUNTS = [
+        'USDT' => 50.0,
+        'PEP' => 300_000.0,
+    ];
+
     public function __construct(
         private readonly ExchangeRegistry $registry,
         private readonly TransferRouteService $transferRouteService,
@@ -146,6 +151,11 @@ final class RebalanceService
                 }
 
                 $amount = min($surplus, $deficit);
+
+                if ($amount < (self::MIN_TRANSFER_AMOUNTS[$currency] ?? 0)) {
+                    continue;
+                }
+
                 $route = $this->transferRouteService->getRouteForTransfer($fromExchange, $toExchange, $currency, $networkOverride);
 
                 $krakenStep = null;
