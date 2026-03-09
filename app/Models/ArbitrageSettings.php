@@ -17,6 +17,7 @@ class ArbitrageSettings extends Model
         'stability',
         'min_amount',
         'execute_orders',
+        'rebalance_enabled',
     ];
 
     /**
@@ -32,6 +33,7 @@ class ArbitrageSettings extends Model
             'stability' => 'float',
             'min_amount' => 'float',
             'execute_orders' => 'boolean',
+            'rebalance_enabled' => 'boolean',
         ];
     }
 
@@ -45,6 +47,7 @@ class ArbitrageSettings extends Model
             'stability' => 0.5,
             'min_amount' => 0,
             'execute_orders' => false,
+            'rebalance_enabled' => true,
         ]);
     }
 }

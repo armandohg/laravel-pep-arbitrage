@@ -30,6 +30,8 @@ class ArbitrageMonitor extends Component
 
     public bool $executeOrders = false;
 
+    public bool $rebalanceEnabled = true;
+
     public function mount(): void
     {
         $settings = ArbitrageSettings::current();
@@ -41,6 +43,7 @@ class ArbitrageMonitor extends Component
         $this->stability = $settings->stability;
         $this->minAmount = $settings->min_amount;
         $this->executeOrders = $settings->execute_orders;
+        $this->rebalanceEnabled = $settings->rebalance_enabled;
     }
 
     public function save(): void
@@ -55,6 +58,7 @@ class ArbitrageMonitor extends Component
             'stability' => $this->stability,
             'min_amount' => $this->minAmount,
             'execute_orders' => $this->executeOrders,
+            'rebalance_enabled' => $this->rebalanceEnabled,
         ]);
 
         $this->dispatch('settings-saved');

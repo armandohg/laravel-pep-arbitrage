@@ -63,6 +63,12 @@
                 :description="__('When enabled, the monitor will place real buy/sell orders when an opportunity is confirmed.')"
             />
 
+            <flux:switch
+                wire:model="rebalanceEnabled"
+                :label="__('Enable Rebalancing')"
+                :description="__('When enabled, the scheduler will automatically rebalance PEP and USDT across exchanges every 10 minutes.')"
+            />
+
             <div class="flex items-center gap-4">
                 <flux:button variant="primary" type="submit">{{ __('Save') }}</flux:button>
 

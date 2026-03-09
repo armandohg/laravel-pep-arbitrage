@@ -2,6 +2,7 @@
 
 use App\Console\Commands\ExchangesSettleKrakenCommand;
 use App\Console\Commands\ExchangesSnapshotBalancesCommand;
+use App\Models\ArbitrageSettings;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -16,7 +17,9 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withSchedule(function (Schedule $schedule): void {
         $schedule->command(ExchangesSnapshotBalancesCommand::class)->everyFifteenMinutes();
         $schedule->command(ExchangesSettleKrakenCommand::class)->everyMinute()->withoutOverlapping();
-        $schedule->command('exchanges:rebalance --execute')->everyTenMinutes()->withoutOverlapping();
+        $schedule->command('exchanges:rebalance --execute')->everyTenMinutes()->withoutOverlapping()->when(
+            fn () => ArbitrageSettings::current()->rebalance_enabled
+        );
     })
     ->withMiddleware(function (Middleware $middleware): void {
         //
