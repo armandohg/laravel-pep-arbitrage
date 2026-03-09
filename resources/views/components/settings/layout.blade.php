@@ -7,7 +7,6 @@
                 <flux:navlist.item :href="route('two-factor.show')" wire:navigate>{{ __('Two-Factor Auth') }}</flux:navlist.item>
             @endif
             <flux:navlist.item :href="route('appearance.edit')" wire:navigate>{{ __('Appearance') }}</flux:navlist.item>
-            <flux:navlist.item :href="route('settings.arbitrage')" wire:navigate>{{ __('Arbitrage Monitor') }}</flux:navlist.item>
         </flux:navlist>
     </div>
 
