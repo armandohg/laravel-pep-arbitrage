@@ -7,9 +7,9 @@ use App\Exchanges\Contracts\ExchangeInterface;
 
 class DetectOpportunity
 {
-    public const float MIN_PROFIT_RATIO = 0.003; // 0.3%
+    public const MIN_PROFIT_RATIO = 0.003; // 0.3%
 
-    public const int MAX_LEVELS = 5;
+    public const MAX_LEVELS = 5;
 
     /**
      * Check both directions (A→B and B→A) and return the best opportunity, or null.
