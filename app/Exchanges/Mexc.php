@@ -241,6 +241,32 @@ class Mexc extends BaseExchange
     }
 
     /**
+     * @return array{status: 'pending'|'confirming'|'completed'|'failed', amount: float|null}
+     */
+    public function getDepositStatus(string $txHash): array
+    {
+        $url = config('exchanges.mexc.base_url').'/api/v3/capital/deposit/hisrec';
+        $response = $this->request('GET', $url, ['txId' => $txHash], true);
+
+        $entry = is_array($response) && isset($response[0]) ? $response[0] : null;
+
+        if ($entry === null) {
+            return ['status' => 'pending', 'amount' => null];
+        }
+
+        $statusRaw = (string) ($entry['status'] ?? '');
+
+        $status = match ($statusRaw) {
+            '1', 'success', 'completed' => 'completed',
+            '3', 'confirming' => 'confirming',
+            '5', 'failed' => 'failed',
+            default => 'pending',
+        };
+
+        return ['status' => $status, 'amount' => isset($entry['amount']) ? (float) $entry['amount'] : null];
+    }
+
+    /**
      * @return array<int, array{symbol: string, base: string, quote_volume_24h: float, price_change_pct: float, last_price: float}>
      */
     public function getAvailableMarkets(): array

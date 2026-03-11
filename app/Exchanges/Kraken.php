@@ -169,6 +169,33 @@ class Kraken extends BaseExchange
     }
 
     /**
+     * @return array{status: 'pending'|'confirming'|'completed'|'failed', amount: float|null}
+     */
+    public function getDepositStatus(string $txHash): array
+    {
+        $url = config('exchanges.kraken.base_url').'/private/DepositStatus';
+        $response = $this->requestPrivate($url, []);
+
+        $entries = $response['result'] ?? [];
+        $entry = collect($entries)->firstWhere('txid', $txHash);
+
+        if ($entry === null) {
+            return ['status' => 'pending', 'amount' => null];
+        }
+
+        $statusRaw = strtolower((string) ($entry['status'] ?? ''));
+
+        $status = match ($statusRaw) {
+            'success' => 'completed',
+            'settled', 'on hold' => 'confirming',
+            'failure', 'expired' => 'failed',
+            default => 'pending',
+        };
+
+        return ['status' => $status, 'amount' => isset($entry['amount']) ? (float) $entry['amount'] : null];
+    }
+
+    /**
      * @return array{orderId: string}
      */
     public function placeOrder(string $symbol, string $side, float $amount, string $type, ?float $price = null): array

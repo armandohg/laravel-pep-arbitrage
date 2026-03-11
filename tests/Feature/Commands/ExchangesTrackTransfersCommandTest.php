@@ -29,6 +29,7 @@ function makeTransfer(array $overrides = []): RebalanceTransfer
         'network' => 'TRC20',
         'withdrawal_id' => null,
         'withdrawal_status' => null,
+        'tx_hash' => null,
         'expires_at' => now()->addHours(2),
         'settled_at' => null,
     ], $overrides));
@@ -38,7 +39,7 @@ test('exits silently when no unsettled transfers exist', function () {
     makeTransfer(['settled_at' => now()->subMinutes(5)]);
 
     $this->mexc->shouldNotReceive('getWithdrawalStatus');
-    $this->coinex->shouldNotReceive('getBalances');
+    $this->coinex->shouldNotReceive('getDepositStatus');
 
     $this->artisan('exchanges:track-transfers')
         ->assertSuccessful()
@@ -62,7 +63,7 @@ test('polls withdrawal status and updates when withdrawal_id is set', function (
         ->with('WD123')
         ->andReturn(['status' => 'processing', 'tx_hash' => null]);
 
-    $this->coinex->allows('getBalances')->andReturn(['USDT' => ['available' => 0.0]]);
+    $this->coinex->shouldNotReceive('getDepositStatus');
 
     $this->artisan('exchanges:track-transfers')->assertSuccessful();
 
@@ -76,7 +77,9 @@ test('updates tx_hash when returned from withdrawal status', function () {
         ->with('WD999')
         ->andReturn(['status' => 'completed', 'tx_hash' => '0xabc123']);
 
-    $this->coinex->allows('getBalances')->andReturn(['USDT' => ['available' => 0.0]]);
+    $this->coinex->allows('getDepositStatus')
+        ->with('0xabc123')
+        ->andReturn(['status' => 'pending', 'amount' => null]);
 
     $this->artisan('exchanges:track-transfers')->assertSuccessful();
 
@@ -87,18 +90,33 @@ test('does not poll source exchange when no withdrawal_id', function () {
     makeTransfer(['withdrawal_id' => null]);
 
     $this->mexc->shouldNotReceive('getWithdrawalStatus');
-    $this->coinex->allows('getBalances')->andReturn(['USDT' => ['available' => 0.0]]);
+    $this->coinex->shouldNotReceive('getDepositStatus');
 
     $this->artisan('exchanges:track-transfers')->assertSuccessful();
 });
 
-test('settles transfer when destination balance exceeds 95% of amount', function () {
-    $transfer = makeTransfer(['withdrawal_id' => 'WD1', 'withdrawal_status' => 'completed', 'amount' => 100.0]);
+test('does not check deposit when tx_hash is null', function () {
+    makeTransfer(['withdrawal_id' => 'WD1', 'withdrawal_status' => 'processing', 'tx_hash' => null]);
 
     $this->mexc->allows('getWithdrawalStatus')
-        ->andReturn(['status' => 'completed', 'tx_hash' => null]);
+        ->andReturn(['status' => 'processing', 'tx_hash' => null]);
 
-    $this->coinex->allows('getBalances')->andReturn(['USDT' => ['available' => 97.0]]);
+    $this->coinex->shouldNotReceive('getDepositStatus');
+
+    $this->artisan('exchanges:track-transfers')->assertSuccessful();
+});
+
+test('settles transfer when destination confirms deposit via tx_hash', function () {
+    $transfer = makeTransfer([
+        'withdrawal_id' => 'WD1',
+        'withdrawal_status' => 'completed',
+        'tx_hash' => '0xdeadbeef',
+        'amount' => 100.0,
+    ]);
+
+    $this->coinex->allows('getDepositStatus')
+        ->with('0xdeadbeef')
+        ->andReturn(['status' => 'completed', 'amount' => 97.5]);
 
     $this->artisan('exchanges:track-transfers')->assertSuccessful();
 
@@ -108,10 +126,12 @@ test('settles transfer when destination balance exceeds 95% of amount', function
         ->and($transfer->withdrawal_status)->toBe('completed');
 });
 
-test('does not settle when destination balance is below 95% of amount', function () {
-    $transfer = makeTransfer(['amount' => 100.0]);
+test('does not settle when deposit is still confirming', function () {
+    $transfer = makeTransfer(['tx_hash' => '0xpending123', 'withdrawal_status' => 'completed']);
 
-    $this->coinex->allows('getBalances')->andReturn(['USDT' => ['available' => 50.0]]);
+    $this->coinex->allows('getDepositStatus')
+        ->with('0xpending123')
+        ->andReturn(['status' => 'confirming', 'amount' => null]);
 
     $this->artisan('exchanges:track-transfers')->assertSuccessful();
 
@@ -119,11 +139,25 @@ test('does not settle when destination balance is below 95% of amount', function
         ->and($transfer->fresh()->deposit_confirmed_at)->toBeNull();
 });
 
+test('marks transfer failed when deposit fails on destination', function () {
+    $transfer = makeTransfer(['tx_hash' => '0xfailed', 'withdrawal_status' => 'completed']);
+
+    $this->coinex->allows('getDepositStatus')
+        ->with('0xfailed')
+        ->andReturn(['status' => 'failed', 'amount' => null]);
+
+    $this->artisan('exchanges:track-transfers')->assertSuccessful();
+
+    $transfer->refresh();
+    expect($transfer->withdrawal_status)->toBe('failed')
+        ->and($transfer->settled_at)->not->toBeNull();
+});
+
 test('does not call source exchange when withdrawal_status is already completed', function () {
-    makeTransfer(['withdrawal_id' => 'WD5', 'withdrawal_status' => 'completed']);
+    makeTransfer(['withdrawal_id' => 'WD5', 'withdrawal_status' => 'completed', 'tx_hash' => null]);
 
     $this->mexc->shouldNotReceive('getWithdrawalStatus');
-    $this->coinex->allows('getBalances')->andReturn(['USDT' => ['available' => 20.0]]);
+    $this->coinex->shouldNotReceive('getDepositStatus');
 
     $this->artisan('exchanges:track-transfers')->assertSuccessful();
 });
@@ -135,7 +169,7 @@ test('stops processing transfer when withdrawal status is failed', function () {
         ->with('WD6')
         ->andReturn(['status' => 'failed', 'tx_hash' => null]);
 
-    $this->coinex->shouldNotReceive('getBalances');
+    $this->coinex->shouldNotReceive('getDepositStatus');
 
     $this->artisan('exchanges:track-transfers')->assertSuccessful();
 
@@ -148,17 +182,17 @@ test('handles getWithdrawalStatus exceptions gracefully', function () {
     $this->mexc->allows('getWithdrawalStatus')
         ->andThrow(new RuntimeException('API error'));
 
-    $this->coinex->allows('getBalances')->andReturn(['USDT' => ['available' => 0.0]]);
+    $this->coinex->shouldNotReceive('getDepositStatus');
 
     $this->artisan('exchanges:track-transfers')->assertSuccessful();
 
     expect($transfer->fresh()->settled_at)->toBeNull();
 });
 
-test('handles getBalances exceptions gracefully', function () {
-    $transfer = makeTransfer();
+test('handles getDepositStatus exceptions gracefully', function () {
+    $transfer = makeTransfer(['tx_hash' => '0xsome', 'withdrawal_status' => 'completed']);
 
-    $this->coinex->allows('getBalances')
+    $this->coinex->allows('getDepositStatus')
         ->andThrow(new RuntimeException('Network timeout'));
 
     $this->artisan('exchanges:track-transfers')->assertSuccessful();
