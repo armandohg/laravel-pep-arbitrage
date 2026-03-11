@@ -9,6 +9,7 @@ use App\Exchanges\Contracts\ExchangeInterface;
 use App\Exchanges\ExchangeRegistry;
 use App\Models\ArbitrageOpportunity;
 use App\Models\ArbitrageSettings;
+use App\Rebalance\RebalanceService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -29,6 +30,7 @@ class FindArbitrageCommand extends Command
         private readonly ExchangeRegistry $registry,
         private readonly DetectOpportunity $detector,
         private readonly ExecuteArbitrage $executeArbitrage,
+        private readonly RebalanceService $rebalanceService,
     ) {
         parent::__construct();
     }
@@ -298,6 +300,16 @@ class FindArbitrageCommand extends Command
                 $result->buyOrderId,
                 $result->sellOrderId,
             ));
+
+            // Automatically rebalance if needed after successful arbitrage
+            try {
+                if ($this->rebalanceService->rebalanceIfNeeded()) {
+                    $this->info('['.now()->format('H:i:s').'] Automatic rebalance executed to restore liquidity.');
+                }
+            } catch (Throwable $e) {
+                Log::warning('Automatic rebalance after arbitrage failed', ['error' => $e->getMessage()]);
+                $this->warn('['.now()->format('H:i:s').'] Automatic rebalance failed (will try on next cycle): '.$e->getMessage());
+            }
         } else {
             $this->error(sprintf(
                 '[%s] Execution failed (side: %s): %s',
