@@ -233,4 +233,22 @@ final class RebalanceService
             fn (Transfer $t) => RebalanceTransfer::hasPendingTo($t->fromExchange, $t->toExchange, $t->currency),
         ));
     }
+
+    /**
+     * Automatically rebalance if the current balance deviates from targets.
+     * Executes all planned transfers without user interaction.
+     * Returns true if any transfers were executed, false if already balanced.
+     */
+    public function rebalanceIfNeeded(float $tolerance = 0.10): bool
+    {
+        $plan = $this->plan($tolerance);
+
+        if ($plan->isBalanced) {
+            return false;
+        }
+
+        $this->execute($plan);
+
+        return true;
+    }
 }
