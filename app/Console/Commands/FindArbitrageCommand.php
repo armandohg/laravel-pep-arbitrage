@@ -17,13 +17,18 @@ use Throwable;
 class FindArbitrageCommand extends Command
 {
     protected $signature = 'arbitrage:find
+        {--pair=pep_usdt : Trading pair to monitor, e.g. sol_usdt or btc_usdt}
         {--once : Run a single discovery poll and exit}
         {--pretend : Ignore balances and detect the maximum theoretical opportunity (simulation only)}
         {--exit-after-execution : Stop the process after the first successful arbitrage execution}';
 
-    protected $description = 'Monitor PEP order books across exchanges and detect arbitrage opportunities';
+    protected $description = 'Monitor asset order books across exchanges and detect arbitrage opportunities';
 
     private float $usdtUsdRate = 1.0;
+
+    private string $pair = 'pep_usdt';
+
+    private string $baseCurrency = 'PEP';
 
     public function __construct(
         private readonly ExchangeRegistry $registry,
@@ -38,7 +43,15 @@ class FindArbitrageCommand extends Command
         $once = (bool) $this->option('once');
         $pretend = (bool) $this->option('pretend');
 
-        $this->info('PEP arbitrage monitor | settings loaded from DB'.($pretend ? ' | pretend mode' : ''));
+        $this->pair = strtolower((string) $this->option('pair'));
+        $this->baseCurrency = strtoupper(explode('_', $this->pair)[0]);
+
+        $this->info(sprintf(
+            '%s arbitrage monitor | pair: %s | settings loaded from DB%s',
+            $this->baseCurrency,
+            $this->pair,
+            $pretend ? ' | pretend mode' : '',
+        ));
 
         $shouldStop = false;
 
@@ -328,17 +341,19 @@ class FindArbitrageCommand extends Command
         ));
 
         $this->line(sprintf(
-            '           ├ Amount  : %s PEP',
+            '           ├ Amount  : %s %s',
             number_format($opportunity->amount, 0),
+            $this->baseCurrency,
         ));
 
         $multiLevel = count($opportunity->buyLevels) > 1 || count($opportunity->sellLevels) > 1;
 
         // BUY side
         $this->line(sprintf(
-            '           ├ <options=bold>BUY</>  on %-7s : avg %.8f USDT/PEP  |  cost    %s USDT',
+            '           ├ <options=bold>BUY</>  on %-7s : avg %.8f USDT/%s  |  cost    %s USDT',
             $opportunity->buyExchange,
             $opportunity->avgBuyPrice,
+            $this->baseCurrency,
             number_format($opportunity->totalBuyCost, 4),
         ));
 
@@ -346,20 +361,23 @@ class FindArbitrageCommand extends Command
             foreach ($opportunity->buyLevels as $i => $level) {
                 $prefix = $i === array_key_last($opportunity->buyLevels) ? '│              └' : '│              ├';
                 $this->line(sprintf(
-                    '           %s level %d : %.8f USDT/PEP × %s PEP',
+                    '           %s level %d : %.8f USDT/%s × %s %s',
                     $prefix,
                     $i + 1,
                     $level['price'],
+                    $this->baseCurrency,
                     number_format($level['amount'], 0),
+                    $this->baseCurrency,
                 ));
             }
         }
 
         // SELL side
         $this->line(sprintf(
-            '           ├ <options=bold>SELL</> on %-7s : avg %.8f USDT/PEP  |  revenue %s USDT',
+            '           ├ <options=bold>SELL</> on %-7s : avg %.8f USDT/%s  |  revenue %s USDT',
             $opportunity->sellExchange,
             $opportunity->avgSellPrice,
+            $this->baseCurrency,
             number_format($opportunity->totalSellRevenue, 4),
         ));
 
@@ -367,11 +385,13 @@ class FindArbitrageCommand extends Command
             foreach ($opportunity->sellLevels as $i => $level) {
                 $prefix = $i === array_key_last($opportunity->sellLevels) ? '│              └' : '│              ├';
                 $this->line(sprintf(
-                    '           %s level %d : %.8f USDT/PEP × %s PEP',
+                    '           %s level %d : %.8f USDT/%s × %s %s',
                     $prefix,
                     $i + 1,
                     $level['price'],
+                    $this->baseCurrency,
                     number_format($level['amount'], 0),
+                    $this->baseCurrency,
                 ));
             }
         }
@@ -391,9 +411,11 @@ class FindArbitrageCommand extends Command
      */
     private function fetchAllBooks(): array
     {
-        $mexcBook = $this->registry->get('Mexc')->getOrderBook('pep_usdt');
-        $coinexBook = $this->registry->get('CoinEx')->getOrderBook('pep_usdt');
-        $krakenPepBookRaw = $this->registry->get('Kraken')->getOrderBook('pep_usd');
+        $krakenPair = str_replace('_usdt', '_usd', $this->pair);
+
+        $mexcBook = $this->registry->get('Mexc')->getOrderBook($this->pair);
+        $coinexBook = $this->registry->get('CoinEx')->getOrderBook($this->pair);
+        $krakenPepBookRaw = $this->registry->get('Kraken')->getOrderBook($krakenPair);
         $krakenUsdtBook = $this->registry->get('Kraken')->getOrderBook('usdt_usd');
 
         $usdtUsdRate = $this->extractUsdtUsdRate($krakenUsdtBook);
@@ -461,12 +483,13 @@ class FindArbitrageCommand extends Command
         float $usdtUsdRate,
     ): array {
         if ($exchange->getName() === 'Kraken') {
-            $raw = $exchange->getOrderBook('pep_usd');
+            $krakenPair = str_replace('_usdt', '_usd', $this->pair);
+            $raw = $exchange->getOrderBook($krakenPair);
 
             return DetectOpportunity::normalizeToUsdt($raw, $usdtUsdRate);
         }
 
-        return $exchange->getOrderBook('pep_usdt');
+        return $exchange->getOrderBook($this->pair);
     }
 
     /**
@@ -493,9 +516,9 @@ class FindArbitrageCommand extends Command
         ];
 
         $baseBalances = [
-            'Mexc' => $balances['Mexc']['PEP']['available'] ?? 0.0,
-            'CoinEx' => $balances['CoinEx']['PEP']['available'] ?? 0.0,
-            'Kraken' => $balances['Kraken']['PEP']['available'] ?? 0.0,
+            'Mexc' => $balances['Mexc'][$this->baseCurrency]['available'] ?? 0.0,
+            'CoinEx' => $balances['CoinEx'][$this->baseCurrency]['available'] ?? 0.0,
+            'Kraken' => $balances['Kraken'][$this->baseCurrency]['available'] ?? 0.0,
         ];
 
         return [$quoteBalances, $baseBalances];
