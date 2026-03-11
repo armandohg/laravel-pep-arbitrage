@@ -88,14 +88,13 @@ final class ExchangesTrackTransfersCommand extends Command
             }
         }
 
-        // Check if deposit has arrived on destination exchange
-        if ($transfer->deposit_confirmed_at === null) {
+        // Check deposit arrival on destination exchange via tx_hash
+        if ($transfer->deposit_confirmed_at === null && $transfer->tx_hash !== null) {
             try {
                 $dest = $this->registry->get($transfer->to_exchange);
-                $balances = $dest->getBalances();
-                $available = $balances[$transfer->currency]['available'] ?? 0.0;
+                $depositResult = $dest->getDepositStatus($transfer->tx_hash);
 
-                if ($available >= $transfer->amount * 0.95) {
+                if ($depositResult['status'] === 'completed') {
                     $transfer->update([
                         'deposit_confirmed_at' => now(),
                         'settled_at' => now(),
@@ -106,19 +105,32 @@ final class ExchangesTrackTransfersCommand extends Command
                         'id' => $transfer->id,
                         'to' => $transfer->to_exchange,
                         'currency' => $transfer->currency,
-                        'available' => $available,
+                        'tx_hash' => $transfer->tx_hash,
                     ]);
 
                     $this->info(sprintf(
-                        'Transfer #%d settled — %s %s confirmed on %s.',
+                        'Transfer #%d settled — %s deposit confirmed on %s.',
                         $transfer->id,
-                        number_format($available, 2),
                         $transfer->currency,
                         $transfer->to_exchange,
                     ));
+                } elseif ($depositResult['status'] === 'confirming') {
+                    $this->line(sprintf(
+                        'Transfer #%d: deposit still confirming on %s.',
+                        $transfer->id,
+                        $transfer->to_exchange,
+                    ));
+                } elseif ($depositResult['status'] === 'failed') {
+                    $transfer->update(['withdrawal_status' => 'failed', 'settled_at' => now()]);
+
+                    Log::error('exchanges:track-transfers — deposit failed on destination exchange', [
+                        'id' => $transfer->id,
+                        'to' => $transfer->to_exchange,
+                        'tx_hash' => $transfer->tx_hash,
+                    ]);
                 }
             } catch (\Throwable $e) {
-                Log::warning('exchanges:track-transfers — could not fetch dest balances', [
+                Log::warning('exchanges:track-transfers — could not fetch deposit status', [
                     'id' => $transfer->id,
                     'error' => $e->getMessage(),
                 ]);

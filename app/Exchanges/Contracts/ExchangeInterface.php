@@ -51,4 +51,11 @@ interface ExchangeInterface
      * @return array{status: 'pending'|'processing'|'completed'|'failed', tx_hash: string|null}
      */
     public function getWithdrawalStatus(string $withdrawalId): array;
+
+    /**
+     * Poll the status of an inbound deposit on this exchange by blockchain tx hash.
+     *
+     * @return array{status: 'pending'|'confirming'|'completed'|'failed', amount: float|null}
+     */
+    public function getDepositStatus(string $txHash): array;
 }

@@ -199,6 +199,33 @@ class CoinEx extends BaseExchange
     }
 
     /**
+     * @return array{status: 'pending'|'confirming'|'completed'|'failed', amount: float|null}
+     */
+    public function getDepositStatus(string $txHash): array
+    {
+        $url = config('exchanges.coinex.base_url').'/v2/assets/deposit';
+        $response = $this->request('GET', $url, ['tx_id' => $txHash], true);
+
+        $entries = $response['data'] ?? [];
+        $entry = collect($entries)->firstWhere('tx_id', $txHash);
+
+        if ($entry === null) {
+            return ['status' => 'pending', 'amount' => null];
+        }
+
+        $statusRaw = strtolower((string) ($entry['status'] ?? ''));
+
+        $status = match ($statusRaw) {
+            'finished', 'completed' => 'completed',
+            'confirming', 'processing' => 'confirming',
+            'failed', 'rejected', 'cancelled', 'cancel' => 'failed',
+            default => 'pending',
+        };
+
+        return ['status' => $status, 'amount' => isset($entry['amount']) ? (float) $entry['amount'] : null];
+    }
+
+    /**
      * @return array<int, array{symbol: string, base: string, quote_volume_24h: float, price_change_pct: float, last_price: float}>
      */
     public function getAvailableMarkets(): array
