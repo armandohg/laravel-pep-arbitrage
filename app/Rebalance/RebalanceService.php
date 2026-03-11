@@ -213,11 +213,11 @@ final class RebalanceService
             $kraken->buyUsdt($transfer->amount);
         }
 
-        $this->registry->get($transfer->fromExchange)
+        $result = $this->registry->get($transfer->fromExchange)
             ->withdraw($transfer->currency, $transfer->amount, $transfer->address, $transfer->networkId, $transfer->withdrawKey);
 
         $cooldownMinutes = ExchangeTransferCooldown::minutesFor($transfer->toExchange, $transfer->currency);
-        RebalanceTransfer::record($transfer, now()->addMinutes($cooldownMinutes));
+        RebalanceTransfer::record($transfer, now()->addMinutes($cooldownMinutes), $result['withdrawal_id'] ?? null);
     }
 
     /**

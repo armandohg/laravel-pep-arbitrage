@@ -24,6 +24,13 @@ interface ExchangeInterface
     public function getTxFee(): float;
 
     /**
+     * Returns all available USDT (or USD for Kraken) spot markets with 24h stats.
+     *
+     * @return array<int, array{symbol: string, base: string, quote_volume_24h: float, price_change_pct: float, last_price: float}>
+     */
+    public function getAvailableMarkets(): array;
+
+    /**
      * Place a spot order on this exchange.
      *
      * @return array{orderId: string}
@@ -34,7 +41,14 @@ interface ExchangeInterface
      * Withdraw currency to a destination address or key.
      * For Kraken, $address is a pre-configured withdrawal key name (set in Kraken UI).
      *
-     * @return array<string, mixed>
+     * @return array{withdrawal_id: string|null, raw: array<string, mixed>}
      */
     public function withdraw(string $currency, float $amount, string $address, string $network, ?string $withdrawKey = null): array;
+
+    /**
+     * Poll the status of a withdrawal by its exchange-side ID.
+     *
+     * @return array{status: 'pending'|'processing'|'completed'|'failed', tx_hash: string|null}
+     */
+    public function getWithdrawalStatus(string $withdrawalId): array;
 }
