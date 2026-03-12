@@ -47,10 +47,11 @@ interface ExchangeInterface
 
     /**
      * Poll the status of a withdrawal by its exchange-side ID.
+     * Pass $currency to narrow the search on exchanges that require it (e.g. Kraken).
      *
      * @return array{status: 'pending'|'processing'|'completed'|'failed', tx_hash: string|null}
      */
-    public function getWithdrawalStatus(string $withdrawalId): array;
+    public function getWithdrawalStatus(string $withdrawalId, ?string $currency = null): array;
 
     /**
      * Poll the status of an inbound deposit on this exchange by blockchain tx hash.

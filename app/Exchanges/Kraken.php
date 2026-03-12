@@ -143,10 +143,11 @@ class Kraken extends BaseExchange
     /**
      * @return array{status: 'pending'|'processing'|'completed'|'failed', tx_hash: string|null}
      */
-    public function getWithdrawalStatus(string $withdrawalId): array
+    public function getWithdrawalStatus(string $withdrawalId, ?string $currency = null): array
     {
         $url = config('exchanges.kraken.base_url').'/private/WithdrawStatus';
-        $response = $this->requestPrivate($url, []);
+        $params = $currency !== null ? ['asset' => $currency] : [];
+        $response = $this->requestPrivate($url, $params);
 
         $entries = $response['result'] ?? [];
 

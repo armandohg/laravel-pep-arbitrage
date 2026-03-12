@@ -222,7 +222,7 @@ class Mexc extends BaseExchange
     /**
      * @return array{status: 'pending'|'processing'|'completed'|'failed', tx_hash: string|null}
      */
-    public function getWithdrawalStatus(string $withdrawalId): array
+    public function getWithdrawalStatus(string $withdrawalId, ?string $currency = null): array
     {
         $url = config('exchanges.mexc.base_url').'/api/v3/capital/withdraw';
         $response = $this->request('GET', $url, ['id' => $withdrawalId], true);
