@@ -39,7 +39,6 @@ class RebalanceTransfer extends Model
             ->where('to_exchange', $toExchange)
             ->where('currency', $currency)
             ->whereNull('settled_at')
-            ->where('expires_at', '>', now())
             ->exists();
     }
 

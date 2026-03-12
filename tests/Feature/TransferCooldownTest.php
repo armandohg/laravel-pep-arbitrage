@@ -33,7 +33,7 @@ test('hasPendingTo returns true when a non-expired transfer exists', function ()
         'expires_at' => now()->addMinutes(30),
     ]);
 
-    expect(RebalanceTransfer::hasPendingTo('Kraken', 'PEP'))->toBeTrue();
+    expect(RebalanceTransfer::hasPendingTo('Mexc', 'Kraken', 'PEP'))->toBeTrue();
 });
 
 test('hasPendingTo returns false when transfer is settled', function () {
@@ -47,7 +47,7 @@ test('hasPendingTo returns false when transfer is settled', function () {
         'settled_at' => now()->subMinutes(5),
     ]);
 
-    expect(RebalanceTransfer::hasPendingTo('Kraken', 'PEP'))->toBeFalse();
+    expect(RebalanceTransfer::hasPendingTo('Mexc', 'Kraken', 'PEP'))->toBeFalse();
 });
 
 test('hasPendingTo returns true when transfer is unsettled and within expiry', function () {
@@ -61,10 +61,10 @@ test('hasPendingTo returns true when transfer is unsettled and within expiry', f
         'settled_at' => null,
     ]);
 
-    expect(RebalanceTransfer::hasPendingTo('Kraken', 'USDT'))->toBeTrue();
+    expect(RebalanceTransfer::hasPendingTo('Mexc', 'Kraken', 'USDT'))->toBeTrue();
 });
 
-test('hasPendingTo returns false when transfer is expired', function () {
+test('hasPendingTo returns true when transfer is expired but not yet settled', function () {
     RebalanceTransfer::create([
         'from_exchange' => 'Mexc',
         'to_exchange' => 'Kraken',
@@ -74,11 +74,12 @@ test('hasPendingTo returns false when transfer is expired', function () {
         'expires_at' => now()->subMinute(),
     ]);
 
-    expect(RebalanceTransfer::hasPendingTo('Kraken', 'PEP'))->toBeFalse();
+    // exchanges:track-transfers will settle it; until then rebalance must wait
+    expect(RebalanceTransfer::hasPendingTo('Mexc', 'Kraken', 'PEP'))->toBeTrue();
 });
 
 test('hasPendingTo returns false when no transfer exists', function () {
-    expect(RebalanceTransfer::hasPendingTo('Kraken', 'PEP'))->toBeFalse();
+    expect(RebalanceTransfer::hasPendingTo('Mexc', 'Kraken', 'PEP'))->toBeFalse();
 });
 
 test('hasPendingTo is scoped by currency', function () {
@@ -91,8 +92,8 @@ test('hasPendingTo is scoped by currency', function () {
         'expires_at' => now()->addMinutes(30),
     ]);
 
-    expect(RebalanceTransfer::hasPendingTo('Kraken', 'PEP'))->toBeFalse();
-    expect(RebalanceTransfer::hasPendingTo('Kraken', 'USDT'))->toBeTrue();
+    expect(RebalanceTransfer::hasPendingTo('Mexc', 'Kraken', 'PEP'))->toBeFalse();
+    expect(RebalanceTransfer::hasPendingTo('Mexc', 'Kraken', 'USDT'))->toBeTrue();
 });
 
 test('record creates transfer with correct expires_at', function () {
