@@ -246,9 +246,17 @@ class Mexc extends BaseExchange
     public function getDepositStatus(string $txHash): array
     {
         $url = config('exchanges.mexc.base_url').'/api/v3/capital/deposit/hisrec';
-        $response = $this->request('GET', $url, ['txId' => $txHash], true);
+        $response = $this->request('GET', $url, ['limit' => 20], true);
 
-        $entry = is_array($response) && isset($response[0]) ? $response[0] : null;
+        if (! is_array($response)) {
+            return ['status' => 'pending', 'amount' => null];
+        }
+
+        // MEXC's txId field includes a log-index suffix (e.g. "0xabc...123:96").
+        // Match against the transHash field which contains the plain tx hash.
+        $entry = collect($response)->first(
+            fn (array $d) => isset($d['transHash']) && strtolower($d['transHash']) === strtolower($txHash)
+        );
 
         if ($entry === null) {
             return ['status' => 'pending', 'amount' => null];
@@ -256,10 +264,13 @@ class Mexc extends BaseExchange
 
         $statusRaw = (string) ($entry['status'] ?? '');
 
+        // MEXC deposit status codes:
+        // 1 = Small amount, 3 = Pending, 5 = Completed, 6 = Wait (AML review),
+        // 7 = Failed, 8 = Cancelled, 9 = Confirming (not yet enough confirmations)
         $status = match ($statusRaw) {
-            '1', 'success', 'completed' => 'completed',
-            '3', 'confirming' => 'confirming',
-            '5', 'failed' => 'failed',
+            '5' => 'completed',
+            '9', '3' => 'confirming',
+            '7', '8' => 'failed',
             default => 'pending',
         };
 

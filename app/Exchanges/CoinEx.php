@@ -78,7 +78,10 @@ class CoinEx extends BaseExchange
 
         if ($signed) {
             $timestamp = (string) (int) (microtime(true) * 1000);
-            $body = empty($data) ? '' : json_encode($data, JSON_THROW_ON_ERROR);
+            // CoinEx v2: body is JSON for POST, empty string for GET (params go in query string)
+            $body = strtoupper($method) === 'POST' && ! empty($data)
+                ? json_encode($data, JSON_THROW_ON_ERROR)
+                : '';
             $parsedPath = parse_url($url, PHP_URL_PATH) ?? '';
             $toSign = strtoupper($method).$parsedPath.$body.$timestamp;
             $signature = hash_hmac('sha256', $toSign, $this->apiSecret);
@@ -203,11 +206,15 @@ class CoinEx extends BaseExchange
      */
     public function getDepositStatus(string $txHash): array
     {
-        $url = config('exchanges.coinex.base_url').'/v2/assets/deposit';
-        $response = $this->request('GET', $url, ['tx_id' => $txHash], true);
+        $url = config('exchanges.coinex.base_url').'/v2/assets/deposit-history';
+        // CoinEx GET signing requires an empty body; passing query params breaks the HMAC.
+        // Fetch recent deposits without filters and match in PHP instead.
+        $response = $this->request('GET', $url, [], true);
 
         $entries = $response['data'] ?? [];
-        $entry = collect($entries)->firstWhere('tx_id', $txHash);
+        $entry = collect($entries)->first(
+            fn (array $d) => isset($d['tx_id']) && strtolower($d['tx_id']) === strtolower($txHash)
+        );
 
         if ($entry === null) {
             return ['status' => 'pending', 'amount' => null];
