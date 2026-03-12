@@ -70,6 +70,15 @@
             :description="__('When enabled, the scheduler will automatically rebalance PEP and USDT across exchanges every 10 minutes.')"
         />
 
+        <flux:input
+            wire:model="transferExpiryHours"
+            :label="__('Transfer Expiry (hours)')"
+            type="number"
+            min="1"
+            max="168"
+            :description="__('How long to wait for a transfer to arrive before marking it failed. Increase for congested networks. Default: 3 hours.')"
+        />
+
         <div class="flex items-center gap-4">
             <flux:button variant="primary" type="submit">{{ __('Save') }}</flux:button>
 

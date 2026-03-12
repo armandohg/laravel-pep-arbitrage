@@ -3,7 +3,7 @@
 namespace App\Rebalance;
 
 use App\Exchanges\ExchangeRegistry;
-use App\Models\ExchangeTransferCooldown;
+use App\Models\ArbitrageSettings;
 use App\Models\RebalanceTransfer;
 use Illuminate\Support\Facades\Log;
 
@@ -216,8 +216,8 @@ final class RebalanceService
         $result = $this->registry->get($transfer->fromExchange)
             ->withdraw($transfer->currency, $transfer->amount, $transfer->address, $transfer->networkId, $transfer->withdrawKey);
 
-        $cooldownMinutes = ExchangeTransferCooldown::minutesFor($transfer->toExchange, $transfer->currency);
-        RebalanceTransfer::record($transfer, now()->addMinutes($cooldownMinutes), $result['withdrawal_id'] ?? null);
+        $expiryHours = ArbitrageSettings::current()->transfer_expiry_hours;
+        RebalanceTransfer::record($transfer, now()->addHours($expiryHours), $result['withdrawal_id'] ?? null);
     }
 
     /**

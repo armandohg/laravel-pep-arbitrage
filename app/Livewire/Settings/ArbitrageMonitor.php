@@ -32,6 +32,9 @@ class ArbitrageMonitor extends Component
 
     public bool $rebalanceEnabled = true;
 
+    #[Validate('required|integer|min:1|max:168')]
+    public int $transferExpiryHours = 3;
+
     public function mount(): void
     {
         $settings = ArbitrageSettings::current();
@@ -44,6 +47,7 @@ class ArbitrageMonitor extends Component
         $this->minAmount = $settings->min_amount;
         $this->executeOrders = $settings->execute_orders;
         $this->rebalanceEnabled = $settings->rebalance_enabled;
+        $this->transferExpiryHours = $settings->transfer_expiry_hours;
     }
 
     public function save(): void
@@ -59,6 +63,7 @@ class ArbitrageMonitor extends Component
             'min_amount' => $this->minAmount,
             'execute_orders' => $this->executeOrders,
             'rebalance_enabled' => $this->rebalanceEnabled,
+            'transfer_expiry_hours' => $this->transferExpiryHours,
         ]);
 
         $this->dispatch('settings-saved');
