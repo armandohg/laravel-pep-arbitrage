@@ -3,23 +3,8 @@
 use App\Exchanges\CoinEx;
 use App\Exchanges\Kraken;
 use App\Exchanges\Mexc;
-use App\Models\ExchangeTransferCooldown;
 use App\Models\RebalanceTransfer;
 use App\Rebalance\Transfer;
-
-// ── ExchangeTransferCooldown ──────────────────────────────────────────────────
-
-test('minutesFor returns cooldown from database for exchange and currency', function () {
-    ExchangeTransferCooldown::create(['exchange' => 'Kraken', 'currency' => 'PEP', 'cooldown_minutes' => 60]);
-    ExchangeTransferCooldown::create(['exchange' => 'Kraken', 'currency' => 'USDT', 'cooldown_minutes' => 30]);
-
-    expect(ExchangeTransferCooldown::minutesFor('Kraken', 'PEP'))->toBe(60)
-        ->and(ExchangeTransferCooldown::minutesFor('Kraken', 'USDT'))->toBe(30);
-});
-
-test('minutesFor returns 60 as default when no record exists', function () {
-    expect(ExchangeTransferCooldown::minutesFor('UnknownExchange', 'PEP'))->toBe(60);
-});
 
 // ── RebalanceTransfer ─────────────────────────────────────────────────────────
 
@@ -125,8 +110,6 @@ test('record creates transfer with correct expires_at', function () {
 test('--execute skips transfer when pending transfer already exists for destination', function () {
     seedTransferRoutes();
 
-    ExchangeTransferCooldown::create(['exchange' => 'CoinEx', 'currency' => 'PEP', 'cooldown_minutes' => 20]);
-
     // Simulate a pending transfer already in flight to CoinEx PEP
     RebalanceTransfer::create([
         'from_exchange' => 'Mexc',
@@ -162,10 +145,8 @@ test('--execute skips transfer when pending transfer already exists for destinat
     $this->artisan('exchanges:rebalance --execute')->assertSuccessful();
 });
 
-test('--execute records transfer with correct expires_at after successful withdraw', function () {
+test('--execute records transfer with expires_at set to transfer_expiry_hours from settings', function () {
     seedTransferRoutes();
-
-    ExchangeTransferCooldown::create(['exchange' => 'CoinEx', 'currency' => 'PEP', 'cooldown_minutes' => 20]);
 
     $mexcMock = Mockery::mock(Mexc::class);
     $coinexMock = Mockery::mock(CoinEx::class);
@@ -178,9 +159,9 @@ test('--execute records transfer with correct expires_at after successful withdr
     $coinexMock->allows('getBalances')->andReturn(['PEP' => ['available' => 1_000_000], 'USDT' => ['available' => 200.0]]);
     $krakenMock->allows('getBalances')->andReturn(['PEP' => ['available' => 1_000_000], 'USD' => ['available' => 200.0]]);
     $krakenMock->allows('getOrderBook')->with('usdt_usd')->andReturn(['asks' => [[1.0, 1000]], 'bids' => [[0.999, 1000]]]);
-    $mexcMock->allows('withdraw')->andReturn(['success' => true]);
-    $coinexMock->allows('withdraw')->andReturn(['success' => true]);
-    $krakenMock->allows('withdraw')->andReturn(['success' => true]);
+    $mexcMock->allows('withdraw')->andReturn(['withdrawal_id' => null, 'raw' => []]);
+    $coinexMock->allows('withdraw')->andReturn(['withdrawal_id' => null, 'raw' => []]);
+    $krakenMock->allows('withdraw')->andReturn(['withdrawal_id' => null, 'raw' => []]);
     $krakenMock->allows('buyUsdt')->andReturn(['success' => true]);
 
     app()->instance(Mexc::class, $mexcMock);
@@ -193,8 +174,9 @@ test('--execute records transfer with correct expires_at after successful withdr
         ->where('currency', 'PEP')
         ->first();
 
+    // Default transfer_expiry_hours = 3 → expires_at ≈ now() + 3h
     expect($coinexTransfer)->not->toBeNull()
-        ->and($coinexTransfer->expires_at->greaterThan(now()->addMinutes(19)))->toBeTrue();
+        ->and($coinexTransfer->expires_at->greaterThan(now()->addHours(2)))->toBeTrue();
 });
 
 test('dry-run shows warning when pending transfer exists for a planned destination', function () {
