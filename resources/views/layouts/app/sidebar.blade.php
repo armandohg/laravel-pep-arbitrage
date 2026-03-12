@@ -15,7 +15,7 @@
                     <flux:sidebar.item icon="home" :href="route('dashboard')" :current="request()->routeIs('dashboard')" wire:navigate>
                         {{ __('Dashboard') }}
                     </flux:sidebar.item>
-                    <flux:sidebar.item icon="arrow-right-left" :href="route('transfers')" :current="request()->routeIs('transfers')" wire:navigate>
+                    <flux:sidebar.item icon="arrows-right-left" :href="route('transfers')" :current="request()->routeIs('transfers')" wire:navigate>
                         {{ __('Transfers') }}
                     </flux:sidebar.item>
                     <flux:sidebar.item icon="adjustments-horizontal" :href="route('settings.arbitrage')" :current="request()->routeIs('settings.arbitrage')" wire:navigate>
