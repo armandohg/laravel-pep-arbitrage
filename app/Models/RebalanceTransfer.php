@@ -15,6 +15,10 @@ class RebalanceTransfer extends Model
         'currency',
         'amount',
         'network',
+        'withdrawal_id',
+        'withdrawal_status',
+        'tx_hash',
+        'deposit_confirmed_at',
         'expires_at',
         'settled_at',
     ];
@@ -25,6 +29,7 @@ class RebalanceTransfer extends Model
             'amount' => 'float',
             'expires_at' => 'datetime',
             'settled_at' => 'datetime',
+            'deposit_confirmed_at' => 'datetime',
         ];
     }
 
@@ -34,7 +39,6 @@ class RebalanceTransfer extends Model
             ->where('to_exchange', $toExchange)
             ->where('currency', $currency)
             ->whereNull('settled_at')
-            ->where('expires_at', '>', now())
             ->exists();
     }
 
@@ -48,7 +52,14 @@ class RebalanceTransfer extends Model
             ->get();
     }
 
-    public static function record(Transfer $transfer, CarbonInterface $expiresAt): self
+    /** @return \Illuminate\Database\Eloquent\Collection<int, self> */
+    public static function unsettled(): \Illuminate\Database\Eloquent\Collection
+    {
+        return static::whereNull('settled_at')
+            ->get();
+    }
+
+    public static function record(Transfer $transfer, CarbonInterface $expiresAt, ?string $withdrawalId = null): self
     {
         return static::create([
             'from_exchange' => $transfer->fromExchange,
@@ -56,6 +67,8 @@ class RebalanceTransfer extends Model
             'currency' => $transfer->currency,
             'amount' => $transfer->amount,
             'network' => $transfer->network,
+            'withdrawal_id' => $withdrawalId,
+            'withdrawal_status' => $withdrawalId !== null ? 'pending' : null,
             'expires_at' => $expiresAt,
         ]);
     }

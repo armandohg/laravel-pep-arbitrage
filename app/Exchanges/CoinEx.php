@@ -78,7 +78,10 @@ class CoinEx extends BaseExchange
 
         if ($signed) {
             $timestamp = (string) (int) (microtime(true) * 1000);
-            $body = empty($data) ? '' : json_encode($data, JSON_THROW_ON_ERROR);
+            // CoinEx v2: body is JSON for POST, empty string for GET (params go in query string)
+            $body = strtoupper($method) === 'POST' && ! empty($data)
+                ? json_encode($data, JSON_THROW_ON_ERROR)
+                : '';
             $parsedPath = parse_url($url, PHP_URL_PATH) ?? '';
             $toSign = strtoupper($method).$parsedPath.$body.$timestamp;
             $signature = hash_hmac('sha256', $toSign, $this->apiSecret);
@@ -159,18 +162,108 @@ class CoinEx extends BaseExchange
     }
 
     /**
-     * @return array<string, mixed>
+     * @return array{withdrawal_id: string|null, raw: array<string, mixed>}
      */
     public function withdraw(string $currency, float $amount, string $address, string $network, ?string $withdrawKey = null): array
     {
         $url = config('exchanges.coinex.base_url').'/v2/assets/withdraw';
 
-        return $this->request('POST', $url, [
+        $raw = $this->request('POST', $url, [
             'ccy' => $currency,
             'to_address' => $address,
             'amount' => round($amount, 2),
             'chain' => $network,
         ], true);
+
+        $withdrawId = $raw['data']['withdraw_id'] ?? null;
+
+        return ['withdrawal_id' => $withdrawId !== null ? (string) $withdrawId : null, 'raw' => $raw];
+    }
+
+    /**
+     * @return array{status: 'pending'|'processing'|'completed'|'failed', tx_hash: string|null}
+     */
+    public function getWithdrawalStatus(string $withdrawalId, ?string $currency = null): array
+    {
+        $url = config('exchanges.coinex.base_url').'/v2/assets/withdraw';
+        $response = $this->request('GET', $url, ['withdraw_id' => (int) $withdrawalId], true);
+
+        $entry = $response['data'][0] ?? $response['data'] ?? [];
+        $statusRaw = strtolower((string) ($entry['status'] ?? ''));
+
+        $status = match ($statusRaw) {
+            'finished', 'completed' => 'completed',
+            'processing', 'confirming' => 'processing',
+            'failed', 'rejected', 'cancelled', 'cancel' => 'failed',
+            default => 'pending',
+        };
+
+        return ['status' => $status, 'tx_hash' => isset($entry['tx_id']) ? (string) $entry['tx_id'] : null];
+    }
+
+    /**
+     * @return array{status: 'pending'|'confirming'|'completed'|'failed', amount: float|null}
+     */
+    public function getDepositStatus(string $txHash): array
+    {
+        $url = config('exchanges.coinex.base_url').'/v2/assets/deposit-history';
+        // CoinEx GET signing requires an empty body; passing query params breaks the HMAC.
+        // Fetch recent deposits without filters and match in PHP instead.
+        $response = $this->request('GET', $url, [], true);
+
+        $entries = $response['data'] ?? [];
+        $entry = collect($entries)->first(
+            fn (array $d) => isset($d['tx_id']) && strtolower($d['tx_id']) === strtolower($txHash)
+        );
+
+        if ($entry === null) {
+            return ['status' => 'pending', 'amount' => null];
+        }
+
+        $statusRaw = strtolower((string) ($entry['status'] ?? ''));
+
+        $status = match ($statusRaw) {
+            'finished', 'completed' => 'completed',
+            'confirming', 'processing' => 'confirming',
+            'failed', 'rejected', 'cancelled', 'cancel' => 'failed',
+            default => 'pending',
+        };
+
+        return ['status' => $status, 'amount' => isset($entry['amount']) ? (float) $entry['amount'] : null];
+    }
+
+    /**
+     * @return array<int, array{symbol: string, base: string, quote_volume_24h: float, price_change_pct: float, last_price: float}>
+     */
+    public function getAvailableMarkets(): array
+    {
+        $url = config('exchanges.coinex.base_url').'/v2/spot/ticker';
+        $response = $this->request('GET', $url, []);
+
+        $markets = [];
+
+        foreach ($response['data'] ?? [] as $ticker) {
+            $market = $ticker['market'] ?? '';
+
+            if (! str_ends_with($market, 'USDT')) {
+                continue;
+            }
+
+            $base = substr($market, 0, -4);
+            $last = (float) ($ticker['last'] ?? 0);
+            $open = (float) ($ticker['open'] ?? 0);
+            $change = $open > 0 ? (($last - $open) / $open * 100) : 0.0;
+
+            $markets[] = [
+                'symbol' => strtolower($base).'_usdt',
+                'base' => $base,
+                'quote_volume_24h' => (float) ($ticker['value'] ?? 0),
+                'price_change_pct' => $change,
+                'last_price' => $last,
+            ];
+        }
+
+        return $markets;
     }
 
     /**

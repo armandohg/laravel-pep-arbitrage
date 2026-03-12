@@ -46,6 +46,21 @@ function fakeExchange(string $name, float $fee): ExchangeInterface
         {
             return [];
         }
+
+        public function getAvailableMarkets(): array
+        {
+            return [];
+        }
+
+        public function getWithdrawalStatus(string $withdrawalId, ?string $currency = null): array
+        {
+            return ['status' => 'pending', 'tx_hash' => null];
+        }
+
+        public function getDepositStatus(string $txHash): array
+        {
+            return ['status' => 'pending', 'amount' => null];
+        }
     };
 }
 

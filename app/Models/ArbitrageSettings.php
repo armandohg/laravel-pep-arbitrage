@@ -18,6 +18,7 @@ class ArbitrageSettings extends Model
         'min_amount',
         'execute_orders',
         'rebalance_enabled',
+        'transfer_expiry_hours',
     ];
 
     /**
@@ -34,6 +35,7 @@ class ArbitrageSettings extends Model
             'min_amount' => 'float',
             'execute_orders' => 'boolean',
             'rebalance_enabled' => 'boolean',
+            'transfer_expiry_hours' => 'integer',
         ];
     }
 
@@ -48,6 +50,7 @@ class ArbitrageSettings extends Model
             'min_amount' => 0,
             'execute_orders' => false,
             'rebalance_enabled' => true,
+            'transfer_expiry_hours' => 3,
         ]);
     }
 }

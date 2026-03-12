@@ -122,18 +122,78 @@ class Kraken extends BaseExchange
     }
 
     /**
-     * @return array<string, mixed>
+     * @return array{withdrawal_id: string|null, raw: array<string, mixed>}
      */
     public function withdraw(string $currency, float $amount, string $address, string $network, ?string $withdrawKey = null): array
     {
         $url = config('exchanges.kraken.base_url').'/private/Withdraw';
 
-        return $this->requestPrivate($url, [
+        $raw = $this->requestPrivate($url, [
             'asset' => $currency,
             'key' => $withdrawKey ?? $address,
             'amount' => (string) $amount,
             'address' => $address,
         ]);
+
+        $refid = $raw['result']['refid'] ?? null;
+
+        return ['withdrawal_id' => $refid !== null ? (string) $refid : null, 'raw' => $raw];
+    }
+
+    /**
+     * @return array{status: 'pending'|'processing'|'completed'|'failed', tx_hash: string|null}
+     */
+    public function getWithdrawalStatus(string $withdrawalId, ?string $currency = null): array
+    {
+        $url = config('exchanges.kraken.base_url').'/private/WithdrawStatus';
+        $params = $currency !== null ? ['asset' => $currency] : [];
+        $response = $this->requestPrivate($url, $params);
+
+        $entries = $response['result'] ?? [];
+
+        $entry = collect($entries)->firstWhere('refid', $withdrawalId);
+
+        if ($entry === null) {
+            return ['status' => 'pending', 'tx_hash' => null];
+        }
+
+        $statusRaw = strtolower((string) ($entry['status'] ?? ''));
+
+        $status = match ($statusRaw) {
+            'success' => 'completed',
+            'settled', 'on hold' => 'processing',
+            'failure', 'expired' => 'failed',
+            default => 'pending',
+        };
+
+        return ['status' => $status, 'tx_hash' => isset($entry['txid']) ? (string) $entry['txid'] : null];
+    }
+
+    /**
+     * @return array{status: 'pending'|'confirming'|'completed'|'failed', amount: float|null}
+     */
+    public function getDepositStatus(string $txHash): array
+    {
+        $url = config('exchanges.kraken.base_url').'/private/DepositStatus';
+        $response = $this->requestPrivate($url, []);
+
+        $entries = $response['result'] ?? [];
+        $entry = collect($entries)->firstWhere('txid', $txHash);
+
+        if ($entry === null) {
+            return ['status' => 'pending', 'amount' => null];
+        }
+
+        $statusRaw = strtolower((string) ($entry['status'] ?? ''));
+
+        $status = match ($statusRaw) {
+            'success' => 'completed',
+            'settled', 'on hold' => 'confirming',
+            'failure', 'expired' => 'failed',
+            default => 'pending',
+        };
+
+        return ['status' => $status, 'amount' => isset($entry['amount']) ? (float) $entry['amount'] : null];
     }
 
     /**
@@ -188,6 +248,65 @@ class Kraken extends BaseExchange
             'ordertype' => 'market',
             'volume' => $usdtAmount,
         ]);
+    }
+
+    /**
+     * Returns all USD spot markets from Kraken with 24h stats.
+     * Fetches all asset pairs then batch-fetches tickers.
+     *
+     * @return array<int, array{symbol: string, base: string, quote_volume_24h: float, price_change_pct: float, last_price: float}>
+     */
+    public function getAvailableMarkets(): array
+    {
+        $pairsUrl = config('exchanges.kraken.base_url').'/public/AssetPairs';
+        $pairsResponse = $this->request('GET', $pairsUrl, []);
+
+        /** @var array<string, string> $pairToBase Maps canonical pair name → clean base currency */
+        $pairToBase = [];
+
+        foreach ($pairsResponse['result'] ?? [] as $pairName => $pairInfo) {
+            // Only USD quote pairs; skip dark-pool (.d) variants
+            if (($pairInfo['quote'] ?? '') !== 'ZUSD' || str_ends_with($pairName, '.d')) {
+                continue;
+            }
+
+            $baseRaw = $pairInfo['base'] ?? '';
+            $pairToBase[$pairName] = self::ASSET_MAP[$baseRaw] ?? $baseRaw;
+        }
+
+        if (empty($pairToBase)) {
+            return [];
+        }
+
+        $markets = [];
+
+        foreach (array_chunk(array_keys($pairToBase), 50) as $batch) {
+            $tickerUrl = config('exchanges.kraken.base_url').'/public/Ticker';
+            $tickerResponse = $this->request('GET', $tickerUrl, ['pair' => implode(',', $batch)]);
+
+            foreach ($tickerResponse['result'] ?? [] as $pairName => $ticker) {
+                $base = $pairToBase[$pairName] ?? null;
+
+                if ($base === null) {
+                    continue;
+                }
+
+                $volume24h = (float) ($ticker['v'][1] ?? 0);  // base volume (24h rolling)
+                $vwap24h = (float) ($ticker['p'][1] ?? 0);    // VWAP (24h rolling)
+                $last = (float) ($ticker['c'][0] ?? 0);
+                $open = (float) ($ticker['o'] ?? 0);
+
+                $markets[] = [
+                    'symbol' => strtolower($base).'_usd',
+                    'base' => $base,
+                    'quote_volume_24h' => $volume24h * $vwap24h,
+                    'price_change_pct' => $open > 0 ? (($last - $open) / $open * 100) : 0.0,
+                    'last_price' => $last,
+                ];
+            }
+        }
+
+        return $markets;
     }
 
     /**
