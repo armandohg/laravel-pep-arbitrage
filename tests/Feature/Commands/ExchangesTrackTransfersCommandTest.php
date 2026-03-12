@@ -60,7 +60,7 @@ test('polls withdrawal status and updates when withdrawal_id is set', function (
     $transfer = makeTransfer(['withdrawal_id' => 'WD123', 'withdrawal_status' => 'pending']);
 
     $this->mexc->allows('getWithdrawalStatus')
-        ->with('WD123')
+        ->with('WD123', 'USDT')
         ->andReturn(['status' => 'processing', 'tx_hash' => null]);
 
     $this->coinex->shouldNotReceive('getDepositStatus');
@@ -74,7 +74,7 @@ test('updates tx_hash when returned from withdrawal status', function () {
     $transfer = makeTransfer(['withdrawal_id' => 'WD999', 'withdrawal_status' => 'processing']);
 
     $this->mexc->allows('getWithdrawalStatus')
-        ->with('WD999')
+        ->with('WD999', 'USDT')
         ->andReturn(['status' => 'completed', 'tx_hash' => '0xabc123']);
 
     $this->coinex->allows('getDepositStatus')
@@ -166,14 +166,16 @@ test('stops processing transfer when withdrawal status is failed', function () {
     $transfer = makeTransfer(['withdrawal_id' => 'WD6', 'withdrawal_status' => 'pending']);
 
     $this->mexc->allows('getWithdrawalStatus')
-        ->with('WD6')
+        ->with('WD6', 'USDT')
         ->andReturn(['status' => 'failed', 'tx_hash' => null]);
 
     $this->coinex->shouldNotReceive('getDepositStatus');
 
     $this->artisan('exchanges:track-transfers')->assertSuccessful();
 
-    expect($transfer->fresh()->withdrawal_status)->toBe('failed');
+    $transfer->refresh();
+    expect($transfer->withdrawal_status)->toBe('failed')
+        ->and($transfer->settled_at)->not->toBeNull();
 });
 
 test('handles getWithdrawalStatus exceptions gracefully', function () {

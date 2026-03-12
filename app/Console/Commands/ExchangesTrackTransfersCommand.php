@@ -55,7 +55,7 @@ final class ExchangesTrackTransfersCommand extends Command
         if ($transfer->withdrawal_id !== null && $transfer->withdrawal_status !== 'completed') {
             try {
                 $source = $this->registry->get($transfer->from_exchange);
-                $statusResult = $source->getWithdrawalStatus($transfer->withdrawal_id);
+                $statusResult = $source->getWithdrawalStatus($transfer->withdrawal_id, $transfer->currency);
 
                 $transfer->update([
                     'withdrawal_status' => $statusResult['status'],
@@ -72,6 +72,8 @@ final class ExchangesTrackTransfersCommand extends Command
                 ));
 
                 if ($statusResult['status'] === 'failed') {
+                    $transfer->update(['settled_at' => now()]);
+
                     Log::error('exchanges:track-transfers — withdrawal failed on source exchange', [
                         'id' => $transfer->id,
                         'withdrawal_id' => $transfer->withdrawal_id,
