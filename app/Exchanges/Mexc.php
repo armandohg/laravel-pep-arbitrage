@@ -224,16 +224,16 @@ class Mexc extends BaseExchange
      */
     public function getWithdrawalStatus(string $withdrawalId, ?string $currency = null): array
     {
-        $url = config('exchanges.mexc.base_url').'/api/v3/capital/withdraw';
+        $url = config('exchanges.mexc.base_url').'/api/v3/capital/withdraw/history';
         $response = $this->request('GET', $url, ['id' => $withdrawalId], true);
 
         $entry = is_array($response) && isset($response[0]) ? $response[0] : $response;
         $statusRaw = strtolower((string) ($entry['status'] ?? ''));
 
         $status = match ($statusRaw) {
-            '5', 'completed' => 'completed',
+            '6', '7', 'completed' => 'completed',
             '3', '4', 'processing' => 'processing',
-            '6', '7', 'failed', 'rejected', 'cancelled' => 'failed',
+            '5', 'failed', 'rejected', 'cancelled' => 'failed',
             default => 'pending',
         };
 

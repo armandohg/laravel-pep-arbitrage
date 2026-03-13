@@ -186,9 +186,12 @@ class CoinEx extends BaseExchange
     public function getWithdrawalStatus(string $withdrawalId, ?string $currency = null): array
     {
         $url = config('exchanges.coinex.base_url').'/v2/assets/withdraw';
-        $response = $this->request('GET', $url, ['withdraw_id' => (int) $withdrawalId], true);
+        // CoinEx GET signing breaks when query params are included (same issue as getDepositStatus).
+        // Fetch recent withdrawals without filters and match in PHP instead.
+        $response = $this->request('GET', $url, [], true);
 
-        $entry = $response['data'][0] ?? $response['data'] ?? [];
+        $entries = $response['data'] ?? [];
+        $entry = collect($entries)->first(fn (array $d) => (string) ($d['withdraw_id'] ?? '') === $withdrawalId) ?? [];
         $statusRaw = strtolower((string) ($entry['status'] ?? ''));
 
         $status = match ($statusRaw) {
