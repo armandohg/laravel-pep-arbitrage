@@ -148,7 +148,41 @@ class FindArbitrageCommand extends Command
             }
 
             if ($best === null) {
-                $this->line(sprintf('[%s] No opportunities above %.2f%%', now()->format('H:i:s'), $minProfit * 100));
+                $bestSpreadRatio = null;
+                $bestSpreadBuy = null;
+                $bestSpreadSell = null;
+
+                foreach ($pairs as [$exchangeA, $bookA, $exchangeB, $bookB]) {
+                    foreach ([[$exchangeA, $bookA, $exchangeB, $bookB], [$exchangeB, $bookB, $exchangeA, $bookA]] as [$buy, $buyBook, $sell, $sellBook]) {
+                        $topAsk = $buyBook['asks'][0]['price'] ?? null;
+                        $topBid = $sellBook['bids'][0]['price'] ?? null;
+
+                        if ($topAsk === null || $topBid === null || $topAsk <= 0) {
+                            continue;
+                        }
+
+                        $ratio = ($topBid * (1 - $sell->getTxFee()) - $topAsk * (1 + $buy->getTxFee())) / ($topAsk * (1 + $buy->getTxFee()));
+
+                        if ($bestSpreadRatio === null || $ratio > $bestSpreadRatio) {
+                            $bestSpreadRatio = $ratio;
+                            $bestSpreadBuy = $buy->getName();
+                            $bestSpreadSell = $sell->getName();
+                        }
+                    }
+                }
+
+                if ($bestSpreadRatio !== null) {
+                    $this->line(sprintf(
+                        '[%s] No opportunities above %.2f%% — best spread: %s → %s @ <fg=gray>%.4f%%</>',
+                        now()->format('H:i:s'),
+                        $minProfit * 100,
+                        $bestSpreadBuy,
+                        $bestSpreadSell,
+                        $bestSpreadRatio * 100,
+                    ));
+                } else {
+                    $this->line(sprintf('[%s] No opportunities above %.2f%%', now()->format('H:i:s'), $minProfit * 100));
+                }
             } else {
                 $this->line(sprintf(
                     '[%s] <fg=yellow>Best opportunity: %s → %s @ +%.4f%% — entering sustain phase.</>',
