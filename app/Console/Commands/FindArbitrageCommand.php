@@ -9,6 +9,7 @@ use App\Exchanges\Contracts\ExchangeInterface;
 use App\Exchanges\ExchangeRegistry;
 use App\Models\ArbitrageOpportunity;
 use App\Models\ArbitrageSettings;
+use App\Models\SpreadSnapshot;
 use App\Rebalance\RebalanceService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
@@ -172,6 +173,13 @@ class FindArbitrageCommand extends Command
                 }
 
                 if ($bestSpreadRatio !== null) {
+                    SpreadSnapshot::create([
+                        'buy_exchange' => $bestSpreadBuy,
+                        'sell_exchange' => $bestSpreadSell,
+                        'spread_ratio' => $bestSpreadRatio,
+                        'recorded_at' => now(),
+                    ]);
+
                     $this->line(sprintf(
                         '[%s] No opportunities above %.2f%% — best spread: %s → %s @ <fg=gray>%.4f%%</>',
                         now()->format('H:i:s'),
@@ -184,6 +192,13 @@ class FindArbitrageCommand extends Command
                     $this->line(sprintf('[%s] No opportunities above %.2f%%', now()->format('H:i:s'), $minProfit * 100));
                 }
             } else {
+                SpreadSnapshot::create([
+                    'buy_exchange' => $best->buyExchange,
+                    'sell_exchange' => $best->sellExchange,
+                    'spread_ratio' => $best->profitRatio,
+                    'recorded_at' => now(),
+                ]);
+
                 $this->line(sprintf(
                     '[%s] <fg=yellow>Best opportunity: %s → %s @ +%.4f%% — entering sustain phase.</>',
                     now()->format('H:i:s'),

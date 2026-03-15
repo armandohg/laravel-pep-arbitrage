@@ -13,6 +13,11 @@
         <livewire:exchange-balances />
     </div>
 
+    {{-- Spread History Chart --}}
+    <div class="mb-8">
+        <livewire:spread-chart />
+    </div>
+
     {{-- Balance History Charts --}}
     <div class="mb-8">
         <livewire:balance-charts />
