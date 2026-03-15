@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\MassPrunable;
 use Illuminate\Database\Eloquent\Model;
 
 class SpreadSnapshot extends Model
 {
+    use MassPrunable;
+
     public $timestamps = false;
 
     protected $fillable = [
@@ -14,6 +17,11 @@ class SpreadSnapshot extends Model
         'spread_ratio',
         'recorded_at',
     ];
+
+    public function prunable(): \Illuminate\Database\Eloquent\Builder
+    {
+        return static::where('recorded_at', '<', now()->subHours(24));
+    }
 
     protected function casts(): array
     {
