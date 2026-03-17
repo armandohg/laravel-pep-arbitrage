@@ -152,11 +152,15 @@ class FindArbitrageCommand extends Command
                 $bestSpreadRatio = null;
                 $bestSpreadBuy = null;
                 $bestSpreadSell = null;
+                $bestSpreadUsdt = null;
+                $bestSpreadProfit = null;
 
                 foreach ($pairs as [$exchangeA, $bookA, $exchangeB, $bookB]) {
                     foreach ([[$exchangeA, $bookA, $exchangeB, $bookB], [$exchangeB, $bookB, $exchangeA, $bookA]] as [$buy, $buyBook, $sell, $sellBook]) {
                         $topAsk = $buyBook['asks'][0]['price'] ?? null;
                         $topBid = $sellBook['bids'][0]['price'] ?? null;
+                        $askAmount = $buyBook['asks'][0]['amount'] ?? null;
+                        $bidAmount = $sellBook['bids'][0]['amount'] ?? null;
 
                         if ($topAsk === null || $topBid === null || $topAsk <= 0) {
                             continue;
@@ -168,6 +172,15 @@ class FindArbitrageCommand extends Command
                             $bestSpreadRatio = $ratio;
                             $bestSpreadBuy = $buy->getName();
                             $bestSpreadSell = $sell->getName();
+
+                            if ($askAmount !== null && $bidAmount !== null) {
+                                $topBookPep = min($askAmount, $bidAmount);
+                                $bestSpreadUsdt = $topBookPep * $topAsk;
+                                $bestSpreadProfit = $topBookPep * ($topBid * (1 - $sell->getTxFee()) - $topAsk * (1 + $buy->getTxFee()));
+                            } else {
+                                $bestSpreadUsdt = null;
+                                $bestSpreadProfit = null;
+                            }
                         }
                     }
                 }
@@ -180,14 +193,70 @@ class FindArbitrageCommand extends Command
                         'recorded_at' => now(),
                     ]);
 
+                    $this->line(sprintf('[%s] No opportunities above %.2f%%', now()->format('H:i:s'), $minProfit * 100));
+
+                    $unlimitedProfit = $bestSpreadProfit !== null
+                        ? sprintf(' — profit $%s USDT', number_format($bestSpreadProfit, 4))
+                        : '';
+                    $unlimitedUsdt = $bestSpreadUsdt !== null
+                        ? sprintf(' on $%s USDT', number_format($bestSpreadUsdt, 2))
+                        : '';
+
                     $this->line(sprintf(
-                        '[%s] No opportunities above %.2f%% — best spread: %s → %s @ <fg=gray>%.4f%%</>',
-                        now()->format('H:i:s'),
-                        $minProfit * 100,
+                        '           ├ unlimited funds : %s → %s @ <fg=gray>%.4f%%</>%s%s',
                         $bestSpreadBuy,
                         $bestSpreadSell,
                         $bestSpreadRatio * 100,
+                        $unlimitedProfit,
+                        $unlimitedUsdt,
                     ));
+
+                    if (! $pretend) {
+                        $bestBalProfit = null;
+                        $bestBalBuy = null;
+                        $bestBalSell = null;
+                        $bestBalUsdt = null;
+                        $bestBalRatio = null;
+
+                        foreach ($pairs as [$exchangeA, $bookA, $exchangeB, $bookB]) {
+                            foreach ([[$exchangeA, $bookA, $exchangeB, $bookB], [$exchangeB, $bookB, $exchangeA, $bookA]] as [$buy, $buyBook, $sell, $sellBook]) {
+                                $topAsk = $buyBook['asks'][0]['price'] ?? null;
+                                $topBid = $sellBook['bids'][0]['price'] ?? null;
+
+                                if ($topAsk === null || $topBid === null || $topAsk <= 0) {
+                                    continue;
+                                }
+
+                                $quoteAvail = $quoteBalances[$buy->getName()] ?? 0.0;
+                                $baseAvail = $baseBalances[$sell->getName()] ?? 0.0;
+                                $maxPepFromQuote = $quoteAvail / ($topAsk * (1 + $buy->getTxFee()));
+                                $tradeablePep = min($maxPepFromQuote, $baseAvail);
+                                $profit = $tradeablePep * ($topBid * (1 - $sell->getTxFee()) - $topAsk * (1 + $buy->getTxFee()));
+                                $ratio = ($topBid * (1 - $sell->getTxFee()) - $topAsk * (1 + $buy->getTxFee())) / ($topAsk * (1 + $buy->getTxFee()));
+
+                                if ($bestBalProfit === null || $profit > $bestBalProfit) {
+                                    $bestBalProfit = $profit;
+                                    $bestBalBuy = $buy->getName();
+                                    $bestBalSell = $sell->getName();
+                                    $bestBalUsdt = $tradeablePep * $topAsk;
+                                    $bestBalRatio = $ratio;
+                                }
+                            }
+                        }
+
+                        if ($bestBalProfit !== null) {
+                            $profitColor = $bestBalProfit >= 0 ? 'green' : 'red';
+                            $this->line(sprintf(
+                                '           └ our funds      : %s → %s @ <fg=gray>%.4f%%</> — <fg=%s>profit $%s USDT</> on $%s USDT',
+                                $bestBalBuy,
+                                $bestBalSell,
+                                $bestBalRatio * 100,
+                                $profitColor,
+                                number_format($bestBalProfit, 4),
+                                number_format($bestBalUsdt, 2),
+                            ));
+                        }
+                    }
                 } else {
                     $this->line(sprintf('[%s] No opportunities above %.2f%%', now()->format('H:i:s'), $minProfit * 100));
                 }
