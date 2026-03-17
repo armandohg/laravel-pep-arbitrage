@@ -15,6 +15,11 @@ class SpreadSnapshot extends Model
         'buy_exchange',
         'sell_exchange',
         'spread_ratio',
+        'bal_buy_exchange',
+        'bal_sell_exchange',
+        'bal_spread_ratio',
+        'bal_profit',
+        'bal_usdt',
         'recorded_at',
     ];
 
@@ -27,6 +32,9 @@ class SpreadSnapshot extends Model
     {
         return [
             'spread_ratio' => 'float',
+            'bal_spread_ratio' => 'float',
+            'bal_profit' => 'float',
+            'bal_usdt' => 'float',
             'recorded_at' => 'datetime',
         ];
     }

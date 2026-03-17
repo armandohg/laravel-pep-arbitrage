@@ -186,38 +186,13 @@ class FindArbitrageCommand extends Command
                 }
 
                 if ($bestSpreadRatio !== null) {
-                    SpreadSnapshot::create([
-                        'buy_exchange' => $bestSpreadBuy,
-                        'sell_exchange' => $bestSpreadSell,
-                        'spread_ratio' => $bestSpreadRatio,
-                        'recorded_at' => now(),
-                    ]);
-
-                    $this->line(sprintf('[%s] No opportunities above %.2f%%', now()->format('H:i:s'), $minProfit * 100));
-
-                    $unlimitedProfit = $bestSpreadProfit !== null
-                        ? sprintf(' — profit $%s USDT', number_format($bestSpreadProfit, 4))
-                        : '';
-                    $unlimitedUsdt = $bestSpreadUsdt !== null
-                        ? sprintf(' on $%s USDT', number_format($bestSpreadUsdt, 2))
-                        : '';
-
-                    $this->line(sprintf(
-                        '           ├ unlimited funds : %s → %s @ <fg=gray>%.4f%%</>%s%s',
-                        $bestSpreadBuy,
-                        $bestSpreadSell,
-                        $bestSpreadRatio * 100,
-                        $unlimitedProfit,
-                        $unlimitedUsdt,
-                    ));
+                    $bestBalProfit = null;
+                    $bestBalBuy = null;
+                    $bestBalSell = null;
+                    $bestBalUsdt = null;
+                    $bestBalRatio = null;
 
                     if (! $pretend) {
-                        $bestBalProfit = null;
-                        $bestBalBuy = null;
-                        $bestBalSell = null;
-                        $bestBalUsdt = null;
-                        $bestBalRatio = null;
-
                         foreach ($pairs as [$exchangeA, $bookA, $exchangeB, $bookB]) {
                             foreach ([[$exchangeA, $bookA, $exchangeB, $bookB], [$exchangeB, $bookB, $exchangeA, $bookA]] as [$buy, $buyBook, $sell, $sellBook]) {
                                 $topAsk = $buyBook['asks'][0]['price'] ?? null;
@@ -243,19 +218,49 @@ class FindArbitrageCommand extends Command
                                 }
                             }
                         }
+                    }
 
-                        if ($bestBalProfit !== null) {
-                            $profitColor = $bestBalProfit >= 0 ? 'green' : 'red';
-                            $this->line(sprintf(
-                                '           └ our funds      : %s → %s @ <fg=gray>%.4f%%</> — <fg=%s>profit $%s USDT</> on $%s USDT',
-                                $bestBalBuy,
-                                $bestBalSell,
-                                $bestBalRatio * 100,
-                                $profitColor,
-                                number_format($bestBalProfit, 4),
-                                number_format($bestBalUsdt, 2),
-                            ));
-                        }
+                    SpreadSnapshot::create([
+                        'buy_exchange' => $bestSpreadBuy,
+                        'sell_exchange' => $bestSpreadSell,
+                        'spread_ratio' => $bestSpreadRatio,
+                        'bal_buy_exchange' => $bestBalBuy,
+                        'bal_sell_exchange' => $bestBalSell,
+                        'bal_spread_ratio' => $bestBalRatio,
+                        'bal_profit' => $bestBalProfit,
+                        'bal_usdt' => $bestBalUsdt,
+                        'recorded_at' => now(),
+                    ]);
+
+                    $this->line(sprintf('[%s] No opportunities above %.2f%%', now()->format('H:i:s'), $minProfit * 100));
+
+                    $unlimitedProfit = $bestSpreadProfit !== null
+                        ? sprintf(' — profit $%s USDT', number_format($bestSpreadProfit, 4))
+                        : '';
+                    $unlimitedUsdt = $bestSpreadUsdt !== null
+                        ? sprintf(' on $%s USDT', number_format($bestSpreadUsdt, 2))
+                        : '';
+
+                    $this->line(sprintf(
+                        '           ├ unlimited funds : %s → %s @ <fg=gray>%.4f%%</>%s%s',
+                        $bestSpreadBuy,
+                        $bestSpreadSell,
+                        $bestSpreadRatio * 100,
+                        $unlimitedProfit,
+                        $unlimitedUsdt,
+                    ));
+
+                    if ($bestBalProfit !== null) {
+                        $profitColor = $bestBalProfit >= 0 ? 'green' : 'red';
+                        $this->line(sprintf(
+                            '           └ our funds      : %s → %s @ <fg=gray>%.4f%%</> — <fg=%s>profit $%s USDT</> on $%s USDT',
+                            $bestBalBuy,
+                            $bestBalSell,
+                            $bestBalRatio * 100,
+                            $profitColor,
+                            number_format($bestBalProfit, 4),
+                            number_format($bestBalUsdt, 2),
+                        ));
                     }
                 } else {
                     $this->line(sprintf('[%s] No opportunities above %.2f%%', now()->format('H:i:s'), $minProfit * 100));
