@@ -2,13 +2,14 @@
 
 use App\Models\BalanceSnapshot;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
 
 new class extends Component
 {
     /**
-     * Chart data grouped by currency.
+     * Chart data grouped by currency, downsampled to hourly averages.
      *
      * @return array<string, array{labels: string[], data: float[]}>
      */
@@ -17,18 +18,23 @@ new class extends Component
     {
         $since = Carbon::now()->subDays(14);
 
-        $snapshots = BalanceSnapshot::query()
-            ->where('snapped_at', '>=', $since)
-            ->orderBy('snapped_at')
-            ->get(['currency', 'total_available', 'snapped_at']);
+        $hourBucket = DB::getDriverName() === 'sqlite'
+            ? "strftime('%Y-%m-%d %H:00:00', snapped_at)"
+            : "DATE_FORMAT(snapped_at, '%Y-%m-%d %H:00:00')";
 
-        // Index by [currency][snapped_at] for easy USD→USDT merging.
+        $snapshots = BalanceSnapshot::query()
+            ->selectRaw("currency, AVG(total_available) as total_available, {$hourBucket} as snapped_at")
+            ->where('snapped_at', '>=', $since)
+            ->groupByRaw("currency, {$hourBucket}")
+            ->orderBy('snapped_at')
+            ->get();
+
         $byTime = [];
 
         foreach ($snapshots as $record) {
             $currency = $record->currency === 'USD' ? 'USDT' : $record->currency;
-            $key = $record->snapped_at->toDateTimeString();
-            $byTime[$currency][$key] = ($byTime[$currency][$key] ?? 0.0) + $record->total_available;
+            $key = (string) $record->snapped_at;
+            $byTime[$currency][$key] = ($byTime[$currency][$key] ?? 0.0) + (float) $record->total_available;
         }
 
         $charts = [];

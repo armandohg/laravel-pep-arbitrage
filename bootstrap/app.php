@@ -22,7 +22,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('exchanges:rebalance --execute')->everyTenMinutes()->withoutOverlapping()->when(
             fn () => ArbitrageSettings::current()->rebalance_enabled
         );
-        $schedule->command('model:prune', ['--model' => [\App\Models\SpreadSnapshot::class]])->hourly();
+        $schedule->command('model:prune', ['--model' => [\App\Models\SpreadSnapshot::class, \App\Models\BalanceSnapshot::class]])->hourly();
     })
     ->withMiddleware(function (Middleware $middleware): void {
         //
