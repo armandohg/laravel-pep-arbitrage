@@ -197,6 +197,8 @@ class FindArbitrageCommand extends Command
                             foreach ([[$exchangeA, $bookA, $exchangeB, $bookB], [$exchangeB, $bookB, $exchangeA, $bookA]] as [$buy, $buyBook, $sell, $sellBook]) {
                                 $topAsk = $buyBook['asks'][0]['price'] ?? null;
                                 $topBid = $sellBook['bids'][0]['price'] ?? null;
+                                $askAmount = $buyBook['asks'][0]['amount'] ?? null;
+                                $bidAmount = $sellBook['bids'][0]['amount'] ?? null;
 
                                 if ($topAsk === null || $topBid === null || $topAsk <= 0) {
                                     continue;
@@ -205,7 +207,12 @@ class FindArbitrageCommand extends Command
                                 $quoteAvail = $quoteBalances[$buy->getName()] ?? 0.0;
                                 $baseAvail = $baseBalances[$sell->getName()] ?? 0.0;
                                 $maxPepFromQuote = $quoteAvail / ($topAsk * (1 + $buy->getTxFee()));
-                                $tradeablePep = min($maxPepFromQuote, $baseAvail);
+                                $tradeablePep = min(
+                                    $maxPepFromQuote,
+                                    $baseAvail,
+                                    $askAmount ?? PHP_FLOAT_MAX,
+                                    $bidAmount ?? PHP_FLOAT_MAX,
+                                );
                                 $profit = $tradeablePep * ($topBid * (1 - $sell->getTxFee()) - $topAsk * (1 + $buy->getTxFee()));
                                 $ratio = ($topBid * (1 - $sell->getTxFee()) - $topAsk * (1 + $buy->getTxFee())) / ($topAsk * (1 + $buy->getTxFee()));
 
