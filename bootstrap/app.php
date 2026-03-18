@@ -1,5 +1,6 @@
 <?php
 
+use App\Console\Commands\ExchangesAutoSellUsdtKrakenCommand;
 use App\Console\Commands\ExchangesSettleKrakenCommand;
 use App\Console\Commands\ExchangesSnapshotBalancesCommand;
 use App\Console\Commands\ExchangesTrackTransfersCommand;
@@ -17,6 +18,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withSchedule(function (Schedule $schedule): void {
         $schedule->command(ExchangesSnapshotBalancesCommand::class)->everyFifteenMinutes();
+        $schedule->command(ExchangesAutoSellUsdtKrakenCommand::class)->everyMinute()->withoutOverlapping();
         $schedule->command(ExchangesSettleKrakenCommand::class)->everyMinute()->withoutOverlapping();
         $schedule->command(ExchangesTrackTransfersCommand::class)->everyMinute()->withoutOverlapping();
         $schedule->command('exchanges:rebalance --execute')->everyTenMinutes()->withoutOverlapping()->when(
