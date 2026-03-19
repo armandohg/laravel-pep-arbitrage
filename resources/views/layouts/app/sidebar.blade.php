@@ -96,6 +96,51 @@
 
         {{ $slot }}
 
+        {{-- Deployment refresh notifier --}}
+        @php($deployVersion = file_exists(public_path('version.txt')) ? trim(file_get_contents(public_path('version.txt'))) : null)
+        @if($deployVersion)
+        <div
+            x-data="{
+                version: '{{ $deployVersion }}',
+                updateAvailable: false,
+                async check() {
+                    try {
+                        const res = await fetch('/version.txt?t=' + Date.now());
+                        if (!res.ok) return;
+                        const v = (await res.text()).trim();
+                        if (v && v !== this.version) this.updateAvailable = true;
+                    } catch {}
+                },
+                init() { setInterval(() => this.check(), 10_000); }
+            }"
+        >
+            <div
+                x-show="updateAvailable"
+                x-transition.opacity
+                class="fixed bottom-4 right-4 z-50 w-80"
+                style="display:none"
+            >
+                <flux:card class="shadow-lg">
+                    <div class="flex items-start gap-3">
+                        <flux:icon.arrow-path class="mt-0.5 size-5 shrink-0 text-blue-500" />
+                        <div class="flex-1">
+                            <flux:heading size="sm">New version available</flux:heading>
+                            <flux:text class="mt-1 text-sm">A new deployment is ready. Refresh to get the latest version.</flux:text>
+                            <div class="mt-3 flex gap-2">
+                                <flux:button size="sm" variant="primary" onclick="window.location.reload()">
+                                    Refresh now
+                                </flux:button>
+                                <flux:button size="sm" variant="ghost" @click="updateAvailable = false">
+                                    Dismiss
+                                </flux:button>
+                            </div>
+                        </div>
+                    </div>
+                </flux:card>
+            </div>
+        </div>
+        @endif
+
         @fluxScripts
     </body>
 </html>
