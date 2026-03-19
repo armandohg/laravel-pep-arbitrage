@@ -3,6 +3,8 @@
 namespace App\Livewire;
 
 use App\Exchanges\ExchangeRegistry;
+use App\Rebalance\RebalanceService;
+use App\Rebalance\Transfer;
 use Illuminate\Support\Facades\Cache;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
@@ -105,6 +107,26 @@ class ExchangeBalances extends Component
         uasort($balances, fn (array $a, array $b) => $b['available'] <=> $a['available']);
 
         return $balances;
+    }
+
+    public function rebalanceCurrency(string $currency, RebalanceService $rebalanceService): void
+    {
+        if (! in_array($currency, ['PEP', 'USDT'], strict: true)) {
+            return;
+        }
+
+        $plan = $rebalanceService->plan();
+
+        $transfers = array_filter(
+            $plan->transfers,
+            fn (Transfer $t) => $t->currency === $currency,
+        );
+
+        foreach ($transfers as $transfer) {
+            $rebalanceService->executeTransfer($transfer);
+        }
+
+        unset($this->balances, $this->totalBalances, $this->exchangePercentages);
     }
 
     public function forceRefresh(): void

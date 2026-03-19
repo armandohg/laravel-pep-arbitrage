@@ -13,13 +13,24 @@
             <flux:heading size="sm" class="mb-3">Total (all exchanges)</flux:heading>
             <div class="grid grid-cols-2 gap-x-8 gap-y-2 sm:flex sm:flex-wrap sm:gap-x-10">
                 @foreach ($this->totalBalances as $currency => $total)
-                    <div class="flex items-baseline gap-2">
+                    <div class="flex items-center gap-1.5">
                         <flux:text class="text-sm text-zinc-500 dark:text-zinc-400">{{ $currency }}</flux:text>
                         <span class="font-semibold tabular-nums">
                             {{ $currency === 'PEP'
                                 ? number_format($total, 0)
                                 : number_format($total, 4) }}
                         </span>
+                        <flux:button
+                            wire:click="rebalanceCurrency('{{ $currency }}')"
+                            wire:confirm="Rebalance {{ $currency }} across all exchanges? This will execute real withdrawals."
+                            wire:loading.attr="disabled"
+                            wire:target="rebalanceCurrency('{{ $currency }}')"
+                            size="sm"
+                            variant="ghost"
+                            icon="arrow-path"
+                            inset="top bottom"
+                            title="Rebalance {{ $currency }}"
+                        />
                     </div>
                 @endforeach
             </div>
