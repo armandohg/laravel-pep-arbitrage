@@ -19,6 +19,12 @@ class TransfersList extends Component
 
     public string $statusFilter = '';
 
+    public string $filterFrom = '';
+
+    public string $filterTo = '';
+
+    public string $filterCurrency = '';
+
     // Manual transfer form
     public bool $showTransferForm = false;
 
@@ -37,6 +43,21 @@ class TransfersList extends Component
     public function setFilter(string $status): void
     {
         $this->statusFilter = $status;
+        $this->resetPage();
+    }
+
+    public function updatedFilterFrom(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedFilterTo(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedFilterCurrency(): void
+    {
         $this->resetPage();
     }
 
@@ -111,6 +132,9 @@ class TransfersList extends Component
             ->when($this->statusFilter === 'unsettled', fn ($q) => $q->whereNull('settled_at'))
             ->when($this->statusFilter === 'settled', fn ($q) => $q->whereNotNull('settled_at'))
             ->when($this->statusFilter === 'failed', fn ($q) => $q->where('withdrawal_status', 'failed'))
+            ->when($this->filterFrom !== '', fn ($q) => $q->where('from_exchange', $this->filterFrom))
+            ->when($this->filterTo !== '', fn ($q) => $q->where('to_exchange', $this->filterTo))
+            ->when($this->filterCurrency !== '', fn ($q) => $q->where('currency', $this->filterCurrency))
             ->latest()
             ->paginate(20);
     }

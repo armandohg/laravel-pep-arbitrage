@@ -126,14 +126,40 @@
     </div>
 
     {{-- Filters --}}
-    <div class="mb-4 flex flex-wrap gap-2">
-        @foreach (['', 'unsettled', 'settled', 'failed'] as $status)
-            <flux:button
-                wire:click="setFilter('{{ $status }}')"
-                size="sm"
-                variant="{{ $statusFilter === $status ? 'primary' : 'ghost' }}"
-            >{{ $status ? ucfirst($status) : 'All' }}</flux:button>
-        @endforeach
+    <div class="mb-4 flex flex-wrap items-end gap-3">
+        {{-- Status buttons --}}
+        <div class="flex flex-wrap gap-2">
+            @foreach (['', 'unsettled', 'settled', 'failed'] as $status)
+                <flux:button
+                    wire:click="setFilter('{{ $status }}')"
+                    size="sm"
+                    variant="{{ $statusFilter === $status ? 'primary' : 'ghost' }}"
+                >{{ $status ? ucfirst($status) : 'All' }}</flux:button>
+            @endforeach
+        </div>
+
+        {{-- Column filters --}}
+        <div class="flex flex-wrap gap-3 sm:ml-auto">
+            <flux:select wire:model.live="filterFrom" size="sm" placeholder="Origin" class="w-36">
+                <flux:select.option value="">All origins</flux:select.option>
+                <flux:select.option value="Mexc">MEXC</flux:select.option>
+                <flux:select.option value="CoinEx">CoinEx</flux:select.option>
+                <flux:select.option value="Kraken">Kraken</flux:select.option>
+            </flux:select>
+
+            <flux:select wire:model.live="filterTo" size="sm" placeholder="Destination" class="w-36">
+                <flux:select.option value="">All destinations</flux:select.option>
+                <flux:select.option value="Mexc">MEXC</flux:select.option>
+                <flux:select.option value="CoinEx">CoinEx</flux:select.option>
+                <flux:select.option value="Kraken">Kraken</flux:select.option>
+            </flux:select>
+
+            <flux:select wire:model.live="filterCurrency" size="sm" placeholder="Currency" class="w-32">
+                <flux:select.option value="">All currencies</flux:select.option>
+                <flux:select.option value="PEP">PEP</flux:select.option>
+                <flux:select.option value="USDT">USDT</flux:select.option>
+            </flux:select>
+        </div>
     </div>
 
     {{-- Table --}}
