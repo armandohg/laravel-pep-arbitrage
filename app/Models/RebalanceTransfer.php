@@ -61,9 +61,12 @@ class RebalanceTransfer extends Model
 
     public function resetToPending(): void
     {
+        $expiryHours = ArbitrageSettings::current()->transfer_expiry_hours;
+
         $this->update([
             'withdrawal_status' => $this->withdrawal_id !== null ? 'pending' : null,
             'settled_at' => null,
+            'expires_at' => now()->addHours($expiryHours),
         ]);
     }
 
