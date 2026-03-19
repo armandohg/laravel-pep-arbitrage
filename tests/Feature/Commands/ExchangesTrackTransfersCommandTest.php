@@ -191,6 +191,61 @@ test('handles getWithdrawalStatus exceptions gracefully', function () {
     expect($transfer->fresh()->settled_at)->toBeNull();
 });
 
+test('polls withdrawal one last time on expired transfer before marking failed', function () {
+    $transfer = makeTransfer([
+        'withdrawal_id' => 'WD_EXP',
+        'withdrawal_status' => 'pending',
+        'expires_at' => now()->subMinutes(5),
+    ]);
+
+    $this->mexc->allows('getWithdrawalStatus')
+        ->with('WD_EXP', 'USDT')
+        ->andReturn(['status' => 'processing', 'tx_hash' => null]);
+
+    $this->artisan('exchanges:track-transfers')->assertSuccessful();
+
+    $transfer->refresh();
+    expect($transfer->withdrawal_status)->toBe('failed')
+        ->and($transfer->settled_at)->not->toBeNull();
+});
+
+test('checks deposit one last time on expired transfer before marking failed', function () {
+    $transfer = makeTransfer([
+        'withdrawal_status' => 'completed',
+        'tx_hash' => '0xexp_confirming',
+        'expires_at' => now()->subMinutes(5),
+    ]);
+
+    $this->coinex->allows('getDepositStatus')
+        ->with('0xexp_confirming')
+        ->andReturn(['status' => 'confirming', 'amount' => null]);
+
+    $this->artisan('exchanges:track-transfers')->assertSuccessful();
+
+    $transfer->refresh();
+    expect($transfer->withdrawal_status)->toBe('failed')
+        ->and($transfer->settled_at)->not->toBeNull();
+});
+
+test('settles expired transfer when final deposit check confirms arrival', function () {
+    $transfer = makeTransfer([
+        'withdrawal_status' => 'completed',
+        'tx_hash' => '0xexp_arrived',
+        'expires_at' => now()->subMinutes(5),
+    ]);
+
+    $this->coinex->allows('getDepositStatus')
+        ->with('0xexp_arrived')
+        ->andReturn(['status' => 'completed', 'amount' => 97.5]);
+
+    $this->artisan('exchanges:track-transfers')->assertSuccessful();
+
+    $transfer->refresh();
+    expect($transfer->settled_at)->not->toBeNull()
+        ->and($transfer->deposit_confirmed_at)->not->toBeNull()
+        ->and($transfer->withdrawal_status)->toBe('completed');
+});
+
 test('handles getDepositStatus exceptions gracefully', function () {
     $transfer = makeTransfer(['tx_hash' => '0xsome', 'withdrawal_status' => 'completed']);
 

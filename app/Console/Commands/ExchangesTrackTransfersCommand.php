@@ -37,8 +37,13 @@ final class ExchangesTrackTransfersCommand extends Command
 
     private function processTransfer(RebalanceTransfer $transfer): void
     {
-        // If past expiry and still unsettled, mark failed
-        if ($transfer->expires_at !== null && $transfer->expires_at->isPast() && $transfer->deposit_confirmed_at === null) {
+        $isExpired = $transfer->expires_at !== null && $transfer->expires_at->isPast();
+        $hasInflightWithdrawal = $transfer->withdrawal_id !== null
+            && ! in_array($transfer->withdrawal_status, ['completed', 'failed']);
+        $hasInflightDeposit = $transfer->tx_hash !== null && $transfer->deposit_confirmed_at === null;
+
+        // If expired with nothing left to check, mark failed immediately
+        if ($isExpired && ! $hasInflightWithdrawal && ! $hasInflightDeposit) {
             $transfer->update(['withdrawal_status' => 'failed', 'settled_at' => now()]);
             Log::warning('exchanges:track-transfers — transfer expired without deposit confirmation', [
                 'id' => $transfer->id,
@@ -137,6 +142,20 @@ final class ExchangesTrackTransfersCommand extends Command
                     'error' => $e->getMessage(),
                 ]);
             }
+        }
+
+        // After final poll, if still expired and unsettled, mark failed
+        $transfer->refresh();
+
+        if ($isExpired && $transfer->settled_at === null) {
+            $transfer->update(['withdrawal_status' => 'failed', 'settled_at' => now()]);
+            Log::warning('exchanges:track-transfers — transfer expired after final status check', [
+                'id' => $transfer->id,
+                'from' => $transfer->from_exchange,
+                'to' => $transfer->to_exchange,
+                'currency' => $transfer->currency,
+            ]);
+            $this->warn("Transfer #{$transfer->id} expired after final check — marked failed.");
         }
     }
 }
