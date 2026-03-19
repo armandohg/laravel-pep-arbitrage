@@ -7,7 +7,7 @@ use App\Models\ArbitrageSettings;
 use App\Models\RebalanceTransfer;
 use Illuminate\Support\Facades\Log;
 
-final class RebalanceService
+class RebalanceService
 {
     private const MIN_TRANSFER_AMOUNTS = [
         'USDT' => 50.0,

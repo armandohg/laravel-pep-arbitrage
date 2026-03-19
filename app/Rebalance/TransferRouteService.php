@@ -6,7 +6,7 @@ use App\Models\ExchangeNetwork;
 use App\Models\TransferRoute;
 use RuntimeException;
 
-final class TransferRouteService
+class TransferRouteService
 {
     /**
      * Resolve the best transfer route between two exchanges for a given asset.
