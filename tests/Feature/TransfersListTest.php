@@ -169,6 +169,25 @@ it('filters transfers by currency', function () {
     expect($component->get('transfers')->total())->toBe(1);
 });
 
+it('resets a transfer to pending', function () {
+    $transfer = RebalanceTransfer::create([
+        'from_exchange' => 'Mexc', 'to_exchange' => 'CoinEx',
+        'currency' => 'USDT', 'amount' => 100, 'network' => 'TRC20',
+        'withdrawal_id' => 'WD123',
+        'withdrawal_status' => 'failed',
+        'settled_at' => now(),
+        'expires_at' => now()->addHour(),
+    ]);
+
+    Livewire::test('transfers-list')
+        ->call('resetToPending', $transfer->id)
+        ->assertHasNoErrors();
+
+    $transfer->refresh();
+    expect($transfer->settled_at)->toBeNull()
+        ->and($transfer->withdrawal_status)->toBe('pending');
+});
+
 it('filters transfers by settled status', function () {
     RebalanceTransfer::create([
         'from_exchange' => 'Mexc', 'to_exchange' => 'CoinEx',

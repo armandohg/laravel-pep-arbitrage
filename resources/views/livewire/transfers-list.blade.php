@@ -176,6 +176,7 @@
                         <th class="px-4 py-3 text-left font-medium text-zinc-500 dark:text-zinc-400">Deposit</th>
                         <th class="px-4 py-3 text-left font-medium text-zinc-500 dark:text-zinc-400">Tx Hash</th>
                         <th class="px-4 py-3 text-left font-medium text-zinc-500 dark:text-zinc-400">Date</th>
+                        <th class="px-4 py-3"></th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-zinc-100 dark:divide-zinc-800">
@@ -237,6 +238,21 @@
 
                             <td class="px-4 py-3 text-zinc-500 dark:text-zinc-400">
                                 {{ $transfer->created_at->format('M d, H:i') }}
+                            </td>
+
+                            <td class="px-4 py-3 text-right">
+                                <flux:dropdown>
+                                    <flux:button icon="ellipsis-horizontal" size="sm" variant="ghost" />
+                                    <flux:menu>
+                                        <flux:menu.item
+                                            icon="arrow-path"
+                                            wire:click="resetToPending({{ $transfer->id }})"
+                                            wire:confirm="Reset transfer #{{ $transfer->id }} to pending? It will be re-tracked on the next run."
+                                        >
+                                            Set as pending
+                                        </flux:menu.item>
+                                    </flux:menu>
+                                </flux:dropdown>
                             </td>
                         </tr>
                     @empty

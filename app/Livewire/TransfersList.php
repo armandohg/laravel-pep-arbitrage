@@ -125,6 +125,11 @@ class TransfersList extends Component
         }
     }
 
+    public function resetToPending(int $transferId): void
+    {
+        RebalanceTransfer::findOrFail($transferId)->resetToPending();
+    }
+
     #[Computed]
     public function transfers(): LengthAwarePaginator
     {

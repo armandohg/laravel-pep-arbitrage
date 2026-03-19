@@ -59,6 +59,14 @@ class RebalanceTransfer extends Model
             ->get();
     }
 
+    public function resetToPending(): void
+    {
+        $this->update([
+            'withdrawal_status' => $this->withdrawal_id !== null ? 'pending' : null,
+            'settled_at' => null,
+        ]);
+    }
+
     public static function record(Transfer $transfer, CarbonInterface $expiresAt, ?string $withdrawalId = null): self
     {
         return static::create([
