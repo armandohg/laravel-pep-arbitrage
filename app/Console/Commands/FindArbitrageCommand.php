@@ -330,6 +330,13 @@ class FindArbitrageCommand extends Command
             $elapsed = now()->timestamp - $sustainedSince;
 
             if ($elapsed >= $sustainDuration) {
+                Log::info('arbitrage:sustain confirmed', [
+                    'buy_exchange' => $candidate->buyExchange,
+                    'sell_exchange' => $candidate->sellExchange,
+                    'initial_profit_pct' => round($initialProfitPct, 4),
+                    'elapsed_seconds' => $elapsed,
+                ]);
+
                 return true;
             }
 
@@ -357,6 +364,14 @@ class FindArbitrageCommand extends Command
                         $elapsed,
                     ));
 
+                    Log::info('arbitrage:sustain lost', [
+                        'reason' => 'opportunity_gone',
+                        'buy_exchange' => $candidate->buyExchange,
+                        'sell_exchange' => $candidate->sellExchange,
+                        'initial_profit_pct' => round($initialProfitPct, 4),
+                        'elapsed_seconds' => $elapsed,
+                    ]);
+
                     return false;
                 }
 
@@ -373,6 +388,17 @@ class FindArbitrageCommand extends Command
                         $stability,
                     ));
 
+                    Log::info('arbitrage:sustain lost', [
+                        'reason' => 'stability_drift',
+                        'buy_exchange' => $candidate->buyExchange,
+                        'sell_exchange' => $candidate->sellExchange,
+                        'initial_profit_pct' => round($initialProfitPct, 4),
+                        'current_profit_pct' => round($currentProfitPct, 4),
+                        'drift' => round(abs($currentProfitPct - $initialProfitPct), 4),
+                        'tolerance' => $stability,
+                        'elapsed_seconds' => $elapsed,
+                    ]);
+
                     return false;
                 }
 
@@ -385,7 +411,15 @@ class FindArbitrageCommand extends Command
                 ));
             } catch (Throwable $e) {
                 $this->error(sprintf('[%s] Sustain check error: %s', now()->format('H:i:s'), $e->getMessage()));
-                Log::warning('arbitrage:find sustain error', ['message' => $e->getMessage()]);
+
+                Log::warning('arbitrage:sustain lost', [
+                    'reason' => 'exception',
+                    'buy_exchange' => $candidate->buyExchange,
+                    'sell_exchange' => $candidate->sellExchange,
+                    'initial_profit_pct' => round($initialProfitPct, 4),
+                    'elapsed_seconds' => $elapsed,
+                    'message' => $e->getMessage(),
+                ]);
 
                 return false;
             }
