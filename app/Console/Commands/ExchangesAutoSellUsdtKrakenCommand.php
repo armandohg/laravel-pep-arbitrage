@@ -54,7 +54,7 @@ final class ExchangesAutoSellUsdtKrakenCommand extends Command
             return self::SUCCESS;
         }
 
-        $amount = round($usdtAvailable, 2);
+        $amount = floor($usdtAvailable * 100) / 100;
 
         try {
             $this->kraken->sellUsdt($amount);
