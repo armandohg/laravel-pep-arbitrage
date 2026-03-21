@@ -65,7 +65,7 @@ class Kraken extends BaseExchange
 
     protected function fetchBalances(): array
     {
-        $url = config('exchanges.kraken.base_url').'/private/Balance';
+        $url = config('exchanges.kraken.base_url').'/private/BalanceEx';
 
         return $this->requestPrivate($url);
     }
@@ -78,9 +78,11 @@ class Kraken extends BaseExchange
     {
         $balances = [];
 
-        foreach ($response['result'] ?? [] as $asset => $amount) {
+        foreach ($response['result'] ?? [] as $asset => $data) {
             $currency = self::ASSET_MAP[$asset] ?? $asset;
-            $available = (float) $amount;
+            $balance = (float) ($data['balance'] ?? $data);
+            $hold = (float) ($data['hold_trade'] ?? 0.0);
+            $available = max(0.0, $balance - $hold);
 
             if ($available > 0) {
                 $balances[$currency] = ['available' => $available];
