@@ -8,6 +8,11 @@
         </div>
     </div>
 
+    {{-- New Transfer --}}
+    <div class="mb-8">
+        <livewire:manual-transfer />
+    </div>
+
     {{-- Exchange Balances --}}
     <div class="mb-8">
         <livewire:exchange-balances />
