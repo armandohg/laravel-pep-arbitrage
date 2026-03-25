@@ -4,6 +4,7 @@ namespace App\Rebalance;
 
 use App\Exchanges\ExchangeRegistry;
 use App\Models\ArbitrageSettings;
+use App\Models\ExchangeReserve;
 use App\Models\RebalanceTransfer;
 use Illuminate\Support\Facades\Log;
 
@@ -50,14 +51,33 @@ class RebalanceService
         $totalPep = $mexcPep + $coinexPep + $krakenPep;
         $totalUsdt = $mexcUsdt + $coinexUsdt + $krakenUsdt;
 
-        $targetPep = $totalPep / 3;
-        $targetUsdt = $totalUsdt / 3;
+        $exchanges = ['Mexc', 'CoinEx', 'Kraken'];
+        $reserves = ExchangeReserve::allIndexed();
 
-        $targets = [
-            'Mexc' => new ExchangeState('Mexc', $targetPep, $targetUsdt, 'USDT', $targetUsdt),
-            'CoinEx' => new ExchangeState('CoinEx', $targetPep, $targetUsdt, 'USDT', $targetUsdt),
-            'Kraken' => new ExchangeState('Kraken', $targetPep, $targetUsdt, 'USD', $targetUsdt * $usdtUsdRate),
-        ];
+        $totalPepReserved = array_sum(array_map(fn ($e) => $reserves[$e]['PEP'] ?? 0, $exchanges));
+        $totalUsdtReserved = array_sum(array_map(fn ($e) => $reserves[$e]['USDT'] ?? 0, $exchanges));
+
+        $pepShare = $totalPep > $totalPepReserved
+            ? ($totalPep - $totalPepReserved) / 3
+            : $totalPep / 3;
+
+        $usdtShare = $totalUsdt > $totalUsdtReserved
+            ? ($totalUsdt - $totalUsdtReserved) / 3
+            : $totalUsdt / 3;
+
+        $targets = [];
+        foreach ($exchanges as $exchange) {
+            $pepReserve = $reserves[$exchange]['PEP'] ?? 0;
+            $usdtReserve = $reserves[$exchange]['USDT'] ?? 0;
+
+            $targetPep = $totalPep > $totalPepReserved ? $pepReserve + $pepShare : $pepShare;
+            $targetUsdt = $totalUsdt > $totalUsdtReserved ? $usdtReserve + $usdtShare : $usdtShare;
+
+            $targets[$exchange] = match ($exchange) {
+                'Kraken' => new ExchangeState('Kraken', $targetPep, $targetUsdt, 'USD', $targetUsdt * $usdtUsdRate),
+                default => new ExchangeState($exchange, $targetPep, $targetUsdt, 'USDT', $targetUsdt),
+            };
+        }
 
         // Check if already balanced
         $isBalanced = $this->checkBalanced($states, $targets, $tolerance);

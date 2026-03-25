@@ -5,6 +5,7 @@ use App\Exchanges\ExchangeRegistry;
 use App\Exchanges\Kraken;
 use App\Exchanges\Mexc;
 use App\Models\ExchangeNetwork;
+use App\Models\ExchangeReserve;
 use App\Models\ExchangeWallet;
 use App\Models\TransferRoute;
 use App\Rebalance\RebalanceService;
@@ -144,4 +145,38 @@ test('adds krakenStep when Kraken receives USDT', function () {
 
     expect($krakenTransfer)->not->toBeNull()
         ->and($krakenTransfer->krakenStep)->toContain('sell');
+});
+
+test('kraken target includes its PEP reserve when total exceeds total reserved', function () {
+    // Total PEP = 9M, Kraken reserve = 4M → share = (9M - 4M) / 3 = 1.67M → Kraken target = 5.67M
+    ExchangeReserve::create(['exchange' => 'Kraken', 'currency' => 'PEP', 'min_amount' => 4_000_000]);
+
+    $service = makeService(
+        ['PEP' => ['available' => 3_000_000], 'USDT' => ['available' => 300.0]],
+        ['PEP' => ['available' => 3_000_000], 'USDT' => ['available' => 300.0]],
+        ['PEP' => ['available' => 3_000_000], 'USD' => ['available' => 300.0]],
+    );
+
+    $plan = $service->plan(0.10);
+
+    $krakenTarget = collect($plan->targets)->first(fn ($t) => $t->exchange === 'Kraken');
+
+    expect($krakenTarget->pep)->toBeGreaterThan(4_000_000.0);
+});
+
+test('plan falls back to equal split when total PEP is less than total reserves', function () {
+    // Total = 3M, reserves = 4M → fallback: each gets 1M
+    ExchangeReserve::create(['exchange' => 'Kraken', 'currency' => 'PEP', 'min_amount' => 4_000_000]);
+
+    $service = makeService(
+        ['PEP' => ['available' => 1_000_000], 'USDT' => ['available' => 100.0]],
+        ['PEP' => ['available' => 1_000_000], 'USDT' => ['available' => 100.0]],
+        ['PEP' => ['available' => 1_000_000], 'USD' => ['available' => 100.0]],
+    );
+
+    $plan = $service->plan(0.10);
+
+    foreach ($plan->targets as $target) {
+        expect($target->pep)->toBe(1_000_000.0);
+    }
 });

@@ -18,6 +18,11 @@
         <livewire:exchange-balances />
     </div>
 
+    {{-- Minimum Reserves --}}
+    <div class="mb-8">
+        <livewire:exchange-reserves />
+    </div>
+
     {{-- Spread History Chart --}}
     <div class="mb-8">
         <livewire:spread-chart />
