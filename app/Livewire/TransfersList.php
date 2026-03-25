@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\Exchanges\ExchangeRegistry;
 use App\Models\RebalanceTransfer;
 use App\Rebalance\RebalanceService;
 use App\Rebalance\Transfer;
@@ -128,6 +129,28 @@ class TransfersList extends Component
     public function resetToPending(int $transferId): void
     {
         RebalanceTransfer::findOrFail($transferId)->resetToPending();
+    }
+
+    #[Computed]
+    public function originBalance(): ?float
+    {
+        if ($this->transferFrom === '' || $this->transferCurrency === '') {
+            return null;
+        }
+
+        try {
+            $balances = app(ExchangeRegistry::class)->get($this->transferFrom)->getBalances();
+            $currency = $this->transferCurrency;
+
+            // Kraken holds USD, not USDT — treat them as equivalent
+            if ($currency === 'USDT' && ! isset($balances['USDT']) && isset($balances['USD'])) {
+                $currency = 'USD';
+            }
+
+            return $balances[$currency]['available'] ?? 0.0;
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     #[Computed]

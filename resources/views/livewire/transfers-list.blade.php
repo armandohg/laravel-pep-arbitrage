@@ -33,7 +33,7 @@
             <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 {{-- From --}}
                 <div>
-                    <flux:select wire:model="transferFrom" label="From exchange" placeholder="Select exchange">
+                    <flux:select wire:model.live="transferFrom" label="From exchange" placeholder="Select exchange">
                         <flux:select.option value="Mexc">MEXC</flux:select.option>
                         <flux:select.option value="CoinEx">CoinEx</flux:select.option>
                         <flux:select.option value="Kraken">Kraken</flux:select.option>
@@ -57,7 +57,7 @@
 
                 {{-- Currency --}}
                 <div>
-                    <flux:select wire:model="transferCurrency" label="Currency" placeholder="Select currency">
+                    <flux:select wire:model.live="transferCurrency" label="Currency" placeholder="Select currency">
                         <flux:select.option value="PEP">PEP</flux:select.option>
                         <flux:select.option value="USDT">USDT</flux:select.option>
                     </flux:select>
@@ -79,6 +79,11 @@
                     @error('transferAmount')
                         <p class="mt-1 text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
                     @enderror
+                    @if ($this->originBalance !== null)
+                        <p class="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
+                            Available: {{ number_format($this->originBalance, $transferCurrency === 'PEP' ? 0 : 2) }} {{ $transferCurrency }}
+                        </p>
+                    @endif
                 </div>
             </div>
 
