@@ -1,7 +1,13 @@
-<div>
-    <flux:heading size="lg" class="mb-4">Minimum Reserves</flux:heading>
+<div x-data="{ open: false }">
+    <button
+        @click="open = !open"
+        class="flex w-full items-center justify-between mb-4"
+    >
+        <flux:heading size="lg">Minimum Reserves</flux:heading>
+        <flux:icon.chevron-down x-bind:class="open ? 'rotate-180' : ''" class="size-4 text-zinc-400 transition-transform duration-200" />
+    </button>
 
-    <flux:card>
+    <flux:card x-show="open" x-collapse>
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
                 <thead>
