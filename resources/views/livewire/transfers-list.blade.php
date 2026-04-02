@@ -167,18 +167,14 @@
                             </td>
 
                             <td class="px-4 py-3 text-right">
-                                <flux:dropdown>
-                                    <flux:button icon="ellipsis-horizontal" size="sm" variant="ghost" />
-                                    <flux:menu>
-                                        <flux:menu.item
-                                            icon="arrow-path"
-                                            wire:click="resetToPending({{ $transfer->id }})"
-                                            wire:confirm="Reset transfer #{{ $transfer->id }} to pending? It will be re-tracked on the next run."
-                                        >
-                                            Set as pending
-                                        </flux:menu.item>
-                                    </flux:menu>
-                                </flux:dropdown>
+                                <flux:button
+                                    icon="arrow-path"
+                                    size="sm"
+                                    variant="ghost"
+                                    wire:click="resetToPending({{ $transfer->id }})"
+                                    wire:confirm="Reset transfer #{{ $transfer->id }} to pending? It will be re-tracked on the next run."
+                                    x-tooltip="{ content: 'Set as pending', delay: 0 }"
+                                />
                             </td>
                         </tr>
                     @empty
